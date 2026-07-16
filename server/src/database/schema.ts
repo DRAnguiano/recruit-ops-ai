@@ -1,0 +1,290 @@
+import {
+  boolean,
+  date,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
+import { v7 as uuidv7 } from 'uuid';
+
+// Nota de diseño (design.md, decisión 3): los enums de negocio (estados,
+// clasificaciones, tipos de vacante, canales) se guardan como text validado
+// en la capa de dominio — NUNCA como enums de Postgres — para poder volverlos
+// catálogos configurables desde UI sin migraciones destructivas.
+
+export interface MessageMedia {
+  externalId: string;
+  mimeType?: string;
+  filename?: string;
+  status: 'pending' | 'stored' | 'failed';
+  storageKey?: string;
+  sizeBytes?: number;
+  error?: string;
+}
+
+const timestamps = {
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+};
+
+/** Persona única, deduplicada por teléfono E.164. */
+export const people = pgTable('people', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** Teléfono normalizado E.164 (+52...); llave de dedup entre canales. */
+  phone: text('phone').unique(),
+  name: text('name'),
+  ...timestamps,
+});
+
+/** Identidad de una persona en un canal (wa_id, chat_id de Telegram, PSID de Messenger/IG). */
+export const channelIdentities = pgTable(
+  'channel_identities',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => people.id),
+    /** whatsapp | telegram | messenger | instagram */
+    channel: text('channel').notNull(),
+    externalId: text('external_id').notNull(),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('channel_identities_channel_external_id').on(t.channel, t.externalId)],
+);
+
+export const conversations = pgTable(
+  'conversations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => people.id),
+    channel: text('channel').notNull(),
+    /** open | closed — ciclo de sistema; el estado de negocio vive en el lead. */
+    status: text('status').notNull().default('open'),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    /** human | bot — quién atiende la conversación ahora mismo. */
+    attentionMode: text('attention_mode').notNull().default('human'),
+    assignedAgentId: uuid('assigned_agent_id').references(() => agents.id),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [index('conversations_person_id').on(t.personId)],
+);
+
+export const messages = pgTable(
+  'messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id),
+    channel: text('channel').notNull(),
+    /** Id del mensaje en el canal de origen; único por canal → ingestión idempotente. */
+    externalMessageId: text('external_message_id').notNull(),
+    /** inbound | outbound */
+    direction: text('direction').notNull(),
+    /** text | audio | image | document | video */
+    type: text('type').notNull().default('text'),
+    /**
+     * Referencia de media 1:1 con el mensaje:
+     * { externalId, mimeType?, filename?, status: pending|stored|failed,
+     *   storageKey?, sizeBytes?, error? }
+     */
+    media: jsonb('media').$type<MessageMedia | null>(),
+    sender: text('sender'),
+    body: text('body'),
+    /** Payload original del webhook, intacto, para reprocesos futuros. */
+    rawPayload: jsonb('raw_payload'),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('messages_channel_external_message_id').on(t.channel, t.externalMessageId),
+    index('messages_conversation_id').on(t.conversationId),
+  ],
+);
+
+export const leads = pgTable(
+  'leads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    personId: uuid('person_id')
+      .notNull()
+      .unique()
+      .references(() => people.id),
+    /** vacancy | internal_hr | other */
+    classification: text('classification').notNull().default('other'),
+    detectedVacancyType: text('detected_vacancy_type'),
+    /** new | in_progress | documents | hired | discarded | no_response */
+    status: text('status').notNull().default('new'),
+    /** Canal/campaña de origen; con referral de Meta la atribución es exacta. */
+    origin: text('origin'),
+    campaignId: uuid('campaign_id').references(() => campaigns.id),
+    assignedAgentId: uuid('assigned_agent_id').references(() => agents.id),
+    notes: text('notes'),
+    firstMessageAt: timestamp('first_message_at', { withTimezone: true }),
+    responded: boolean('responded').notNull().default(false),
+    firstResponseMinutesNatural: integer('first_response_minutes_natural'),
+    firstResponseMinutesWork: integer('first_response_minutes_work'),
+    inWorkHours: boolean('in_work_hours'),
+    /** Hora local (0-23) y día (0=domingo) de llegada, en la TZ del schedule. */
+    arrivalHour: integer('arrival_hour'),
+    arrivalDay: integer('arrival_day'),
+    /** system | human — la corrección humana nunca es pisada por el pipeline. */
+    classificationSource: text('classification_source').notNull().default('system'),
+    /** Referral crudo de Click-to-WhatsApp cuando la campaña aún no existe localmente. */
+    referralPayload: jsonb('referral_payload'),
+    matchedOperatorId: uuid('matched_operator_id').references(() => operators.id),
+    ...timestamps,
+  },
+  (t) => [index('leads_status').on(t.status)],
+);
+
+export const campaigns = pgTable('campaigns', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** Id de la campaña en Meta Marketing API (null para CSV/manual). */
+  externalId: text('external_id').unique(),
+  name: text('name').notNull(),
+  /** meta_api | csv | manual — de dónde vienen los datos de esta campaña. */
+  source: text('source').notNull().default('manual'),
+  startDate: date('start_date'),
+  endDate: date('end_date'),
+  isoWeek: text('iso_week'),
+  spendMxn: numeric('spend_mxn', { precision: 12, scale: 2 }).notNull().default('0'),
+  leadsReported: integer('leads_reported').notNull().default(0),
+  clicks: integer('clicks'),
+  targetAgentId: uuid('target_agent_id').references(() => agents.id),
+  /** local | foreign (Local/Foráneo en UI) */
+  modality: text('modality'),
+  vacancyId: uuid('vacancy_id').references(() => jobVacancies.id),
+  /** active | paused */
+  status: text('status').notNull().default('active'),
+  pauseRequestedAt: timestamp('pause_requested_at', { withTimezone: true }),
+  ...timestamps,
+});
+
+export const jobVacancies = pgTable('job_vacancies', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** sencillo | full | quinta_rueda | escuelita (catálogo configurable a futuro) */
+  type: text('type').notNull(),
+  /** Ruta/circuito, ej. "Tramo Torreón", "Clarios". */
+  circuit: text('circuit'),
+  /** local | foreign */
+  modality: text('modality').notNull(),
+  company: text('company').notNull(),
+  quota: integer('quota').notNull().default(0),
+  /** open | paused | closed */
+  status: text('status').notNull().default('open'),
+  ...timestamps,
+});
+
+export const agents = pgTable('agents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull().unique(),
+  active: boolean('active').notNull().default(true),
+  ...timestamps,
+});
+
+export const operators = pgTable('operators', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  empNo: text('emp_no').notNull().unique(),
+  company: text('company').notNull(),
+  name: text('name').notNull(),
+  hireDate: date('hire_date'),
+  /** active | leaving (Activo / Proceso Baja) */
+  status: text('status').notNull().default('active'),
+  /** Teléfonos normalizados (10 dígitos) para match lead→operador. */
+  normalizedPhones: jsonb('normalized_phones').$type<string[]>().notNull().default([]),
+  ...timestamps,
+});
+
+export const fleet = pgTable('fleet', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  company: text('company').notNull().unique(),
+  totalTractors: integer('total_tractors').notNull().default(0),
+  tractorsInService: integer('tractors_in_service').notNull().default(0),
+  tractorsWithoutOperator: integer('tractors_without_operator').notNull().default(0),
+  activeServices: integer('active_services').notNull().default(0),
+  ...timestamps,
+});
+
+export const monthlyGoals = pgTable(
+  'monthly_goals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    company: text('company').notNull(),
+    vacancyType: text('vacancy_type').notNull(),
+    monthlyTarget: integer('monthly_target').notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('monthly_goals_company_vacancy_type').on(t.company, t.vacancyType)],
+);
+
+export const workSchedules = pgTable('work_schedules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull().unique(),
+  /** Días laborables 0-6 (0=domingo). */
+  workDays: jsonb('work_days').$type<number[]>().notNull().default([1, 2, 3, 4, 5]),
+  /** "HH:MM" en la zona horaria del schedule. */
+  startTime: text('start_time').notNull(),
+  endTime: text('end_time').notNull(),
+  /** TZ IANA del schedule; los horarios SIEMPRE se evalúan contra ella. */
+  timezone: text('timezone').notNull().default('America/Mexico_City'),
+  ...timestamps,
+});
+
+/**
+ * Reglas de clasificación como DATOS (regla 1: nada de negocio hardcodeado).
+ * El motor las evalúa por prioridad ascendente con matching case/acento-insensible.
+ */
+export const classificationRules = pgTable('classification_rules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** ad_cta | internal_hr | vacancy_type */
+  category: text('category').notNull(),
+  /** Para vacancy_type: el tipo que detecta (sencillo, full, quinta_rueda, escuelita). */
+  target: text('target'),
+  keywords: jsonb('keywords').$type<string[]>().notNull().default([]),
+  priority: integer('priority').notNull().default(100),
+  active: boolean('active').notNull().default(true),
+  ...timestamps,
+});
+
+/** Configuración operativa simple clave→valor (ej. conversation_inactivity_days). */
+export const appSettings = pgTable('app_settings', {
+  key: text('key').primaryKey(),
+  value: jsonb('value').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Event log append-only: única fuente de métricas y auditoría.
+ * UPDATE/DELETE son rechazados por trigger (migración custom).
+ */
+export const domainEvents = pgTable(
+  'domain_events',
+  {
+    /** UUID v7 generado en la app → orden temporal en el propio id. */
+    id: uuid('id')
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    type: text('type').notNull(),
+    aggregateType: text('aggregate_type').notNull(),
+    aggregateId: text('aggregate_id').notNull(),
+    /** system | user | bot | channel */
+    actor: text('actor').notNull(),
+    payload: jsonb('payload').notNull().default({}),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('domain_events_type_occurred_at').on(t.type, t.occurredAt),
+    index('domain_events_aggregate').on(t.aggregateType, t.aggregateId),
+  ],
+);

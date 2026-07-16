@@ -1,0 +1,6 @@
+{
+  "name": "Torre de Control — Reclutamiento Transmontes",
+  "description": "Dashboard operativo para reclutamiento de operadores de tráiler vía campañas de Facebook y WhatsApp en Transmontes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

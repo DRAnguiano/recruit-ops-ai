@@ -1,0 +1,41 @@
+{
+  "name": "crm-reclutamiento-server",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Backend NestJS del CRM de Reclutamiento Omnicanal",
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/database/migrate.ts"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/core": "^11.1.0",
+    "@nestjs/platform-express": "^11.1.0",
+    "bullmq": "^5.56.0",
+    "drizzle-orm": "^0.44.2",
+    "ioredis": "^5.6.1",
+    "postgres": "^3.4.7",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "uuid": "^11.1.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.7",
+    "@nestjs/testing": "^11.1.0",
+    "@swc/core": "^1.11.0",
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.14.0",
+    "drizzle-kit": "^0.31.1",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "unplugin-swc": "^1.5.1",
+    "vitest": "^3.1.0"
+  }
+}
