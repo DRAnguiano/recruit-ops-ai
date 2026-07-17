@@ -29,16 +29,21 @@ import {
   FleetData,
   MonthlyGoal,
   JobVacancy,
-  WorkScheduleSettings,
-  AppDatabaseBackup
+  WorkScheduleSettings
 } from '../types';
 import {
-  extractWhatsAppChats,
   parseOperatorsDirectory,
   parseCampaignsCSV,
   FileParseError
 } from '../utils/fileParsers';
-import { normalizePhone } from '../utils/whatsappParser';
+import { api, ApiError } from '../api/client';
+import {
+  campaignToApiBulk,
+  fleetToApi,
+  goalToApi,
+  operatorToApiBulk,
+  vacancyToApi,
+} from '../api/mappers';
 
 interface ImportModuleProps {
   agents: string[];
@@ -55,8 +60,6 @@ interface ImportModuleProps {
   setGoals: (goals: MonthlyGoal[]) => void;
   settings: WorkScheduleSettings;
   onRefreshAll: () => Promise<void>;
-  onBackupRestore: (backup: AppDatabaseBackup) => Promise<void>;
-  onExportAll: () => void;
 }
 
 export default function ImportModule({
@@ -74,13 +77,9 @@ export default function ImportModule({
   setGoals,
   settings,
   onRefreshAll,
-  onBackupRestore,
-  onExportAll
 }: ImportModuleProps) {
   // Estado local para los formularios e inputs de archivo
-  const [selectedAgent, setSelectedAgent] = useState<string>('Adriana');
   const [newAgentName, setNewAgentName] = useState<string>('');
-  const [accumulateMode, setAccumulateMode] = useState<boolean>(true);
 
   // Estados de carga de archivos
   const [loading, setLoading] = useState<string | null>(null);
@@ -88,7 +87,6 @@ export default function ImportModule({
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Previsualizaciones locales de archivos cargados
-  const [whatsappPreview, setWhatsappPreview] = useState<ChatLead[]>([]);
   const [operatorPreview, setOperatorPreview] = useState<Operator[]>([]);
   const [campaignPreview, setCampaignPreview] = useState<MarketingCampaign[]>([]);
 
@@ -134,126 +132,17 @@ export default function ImportModule({
   });
 
   // Manejo de agentes personalizados
-  const handleAddAgent = () => {
+  const handleAddAgent = async () => {
     const trimmed = newAgentName.trim();
-    if (trimmed && !agents.includes(trimmed)) {
-      setAgents([...agents, trimmed]);
-      setSelectedAgent(trimmed);
-      setNewAgentName('');
-    }
-  };
-
-  const handleBackupUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+    if (!trimmed || agents.includes(trimmed)) return;
     try {
-      const text = await file.text();
-      const backup = JSON.parse(text) as AppDatabaseBackup;
-      await onBackupRestore(backup);
-      setSuccessMsg('¡Respaldo importado y restaurado en IndexedDB correctamente!');
-      setParseErrors([]);
-    } catch (err: any) {
-      setParseErrors([{ fileName: file.name, message: `El archivo JSON de respaldo no es válido: ${err.message}` }]);
-    }
-  };
-
-  // Importar Chats de WhatsApp (ZIP / TXT)
-  const handleWhatsAppUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setLoading('whatsapp');
-    setParseErrors([]);
-    setSuccessMsg(null);
-    setWhatsappPreview([]);
-
-    let aggregatedLeads: ChatLead[] = [];
-    let aggregatedErrors: FileParseError[] = [];
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const result = await extractWhatsAppChats(file, selectedAgent, settings);
-      aggregatedLeads = [...aggregatedLeads, ...result.leads];
-      aggregatedErrors = [...aggregatedErrors, ...result.errors];
-    }
-
-    if (aggregatedLeads.length > 0) {
-      // Deduplicación e Integración
-      const mergedLeads = [...whatsappPreview];
-      
-      setWhatsappPreview(aggregatedLeads.slice(0, 10));
-
-      if (accumulateMode) {
-        // Acumular: dedupe por phone + agent. Si existe, combinamos mensajes y recalculamos.
-        // O más fácil: si ya existe por teléfono, mantenemos estatus previo y combinamos mensajes
-        const existingLeadsMap = new Map<string, ChatLead>();
-        // Primero cargamos de la base de datos de leads existentes
-        const currentLeads = await import('../db').then(m => m.getAllFromStore<ChatLead>('leads'));
-        currentLeads.forEach(lead => existingLeadsMap.set(lead.phone, lead));
-
-        aggregatedLeads.forEach((newLead) => {
-          const key = newLead.phone;
-          if (existingLeadsMap.has(key)) {
-            // Unir mensajes, ordenar por fecha, mantener el estatus manual previo si existía
-            const oldLead = existingLeadsMap.get(key)!;
-            const allMessagesMap = new Map<string, any>();
-            oldLead.messages.forEach(m => allMessagesMap.set(`${m.timestamp}_${m.sender}`, m));
-            newLead.messages.forEach(m => allMessagesMap.set(`${m.timestamp}_${m.sender}`, m));
-            const mergedMsgs = Array.from(allMessagesMap.values()).sort(
-              (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-            );
-
-            // Re-calcular con el set unificado
-            const firstCandMsg = mergedMsgs.find(m => !m.isAgent);
-            const firstAgentMsg = firstCandMsg ? mergedMsgs.find((m, i) => m.isAgent && i > mergedMsgs.indexOf(firstCandMsg)) : null;
-            const responded = !!firstAgentMsg;
-            let naturalMinutes: number | null = null;
-            let workMinutes: number | null = null;
-
-            if (firstCandMsg && firstAgentMsg) {
-              const candDate = new Date(firstCandMsg.timestamp);
-              const agentDate = new Date(firstAgentMsg.timestamp);
-              naturalMinutes = Math.max(0, Math.round((agentDate.getTime() - candDate.getTime()) / 60000));
-              const { calculateWorkMinutes } = require('../utils/whatsappParser');
-              workMinutes = calculateWorkMinutes(candDate, agentDate, settings);
-            }
-
-            existingLeadsMap.set(key, {
-              ...oldLead,
-              messages: mergedMsgs,
-              lastContactDate: mergedMsgs[mergedMsgs.length - 1].timestamp,
-              responded,
-              firstResponseMinutesNatural: naturalMinutes,
-              firstResponseMinutesWork: workMinutes,
-              // Conservamos estatus previo
-              status: oldLead.status,
-              notes: oldLead.notes || newLead.notes,
-              matchedOperatorId: oldLead.matchedOperatorId || newLead.matchedOperatorId,
-            });
-          } else {
-            existingLeadsMap.set(key, newLead);
-          }
-        });
-
-        // Guardar de vuelta
-        const finalLeads = Array.from(existingLeadsMap.values());
-        await import('../db').then(m => m.saveToStoreBulk('leads', finalLeads));
-      } else {
-        // Reemplazar todo con lo cargado en IndexedDB
-        await import('../db').then(m => m.clearStore('leads'));
-        await import('../db').then(m => m.saveToStoreBulk('leads', aggregatedLeads));
-      }
-
-      setSuccessMsg(`Se procesaron ${aggregatedLeads.length} leads de WhatsApp correctamente.`);
+      await api('/api/agents', { method: 'POST', body: JSON.stringify({ name: trimmed }) });
+      setAgents([...agents, trimmed]);
+      setNewAgentName('');
       await onRefreshAll();
+    } catch (err) {
+      setParseErrors([{ fileName: 'agentes', message: err instanceof ApiError ? err.message : 'No se pudo crear el agente' }]);
     }
-
-    if (aggregatedErrors.length > 0) {
-      setParseErrors(aggregatedErrors);
-    }
-
-    setLoading(null);
   };
 
   // Importar Directorio de Operadores (XLSX / CSV)
@@ -270,20 +159,16 @@ export default function ImportModule({
 
     if (result.operators.length > 0) {
       setOperatorPreview(result.operators.slice(0, 10));
-
-      if (accumulateMode) {
-        const currentOperators = await import('../db').then(m => m.getAllFromStore<Operator>('operators'));
-        const opMap = new Map<string, Operator>();
-        currentOperators.forEach(op => opMap.set(op.empNo, op));
-        result.operators.forEach(op => opMap.set(op.empNo, op));
-        await import('../db').then(m => m.saveToStoreBulk('operators', Array.from(opMap.values())));
-      } else {
-        await import('../db').then(m => m.clearStore('operators'));
-        await import('../db').then(m => m.saveToStoreBulk('operators', result.operators));
+      try {
+        const res = await api<{ created: number; updated: number }>('/api/operators/bulk', {
+          method: 'POST',
+          body: JSON.stringify({ items: result.operators.map(operatorToApiBulk) }),
+        });
+        setSuccessMsg(`Operadores importados: ${res.created} nuevos, ${res.updated} actualizados (idempotente por # Emp).`);
+        await onRefreshAll();
+      } catch (err) {
+        setParseErrors([{ fileName: file.name, message: err instanceof ApiError ? err.message : 'Error al importar operadores' }]);
       }
-
-      setSuccessMsg(`Se cargaron ${result.operators.length} operadores al directorio correctamente.`);
-      await onRefreshAll();
     }
 
     if (result.errors.length > 0) {
@@ -306,20 +191,21 @@ export default function ImportModule({
 
     if (result.campaigns.length > 0) {
       setCampaignPreview(result.campaigns.slice(0, 10));
-
-      if (accumulateMode) {
-        const currentCampaigns = await import('../db').then(m => m.getAllFromStore<MarketingCampaign>('campaigns'));
-        const campMap = new Map<string, MarketingCampaign>();
-        currentCampaigns.forEach(c => campMap.set(c.id, c));
-        result.campaigns.forEach(c => campMap.set(c.id, c));
-        await import('../db').then(m => m.saveToStoreBulk('campaigns', Array.from(campMap.values())));
-      } else {
-        await import('../db').then(m => m.clearStore('campaigns'));
-        await import('../db').then(m => m.saveToStoreBulk('campaigns', result.campaigns));
+      try {
+        const res = await api<{ created: number; updated: number }>('/api/campaigns/bulk', {
+          method: 'POST',
+          body: JSON.stringify({
+            items: result.campaigns.map((c) => ({
+              ...campaignToApiBulk(c),
+              isoWeek: c.isoWeek || getISOWeek(c.startDate),
+            })),
+          }),
+        });
+        setSuccessMsg(`Campañas importadas: ${res.created} nuevas, ${res.updated} actualizadas (upsert por nombre + semana ISO).`);
+        await onRefreshAll();
+      } catch (err) {
+        setParseErrors([{ fileName: file.name, message: err instanceof ApiError ? err.message : 'Error al importar campañas' }]);
       }
-
-      setSuccessMsg(`Se importaron ${result.campaigns.length} campañas de marketing correctamente.`);
-      await onRefreshAll();
     }
 
     if (result.errors.length > 0) {
@@ -334,26 +220,27 @@ export default function ImportModule({
     if (!campaignForm.campaignName) return;
 
     const startDate = campaignForm.startDate || new Date().toISOString().split('T')[0];
-    const newCamp: MarketingCampaign = {
-      id: `${campaignForm.campaignName}_${startDate}`.replace(/\s+/g, '_'),
-      campaignName: campaignForm.campaignName,
-      startDate,
-      endDate: campaignForm.endDate || startDate,
-      isoWeek: getISOWeek(startDate),
-      spend: Number(campaignForm.spend || 0),
-      leadsReported: Number(campaignForm.leadsReported || 0),
-      targetAgent: campaignForm.targetAgent || 'Adriana',
-      type: (campaignForm.type as 'Local' | 'Foráneo') || 'Local',
-      vacanteId: campaignForm.vacanteId || 'Sencillo',
-      status: (campaignForm.status as 'Activa' | 'Pausada') || 'Activa',
-      clicks: Number(campaignForm.clicks || 0),
-    };
-
-    await import('../db').then(m => m.saveSingleToStore('campaigns', newCamp));
-    setCampaigns([...campaigns.filter(c => c.id !== newCamp.id), newCamp]);
-    setSuccessMsg(`Campaña manual "${newCamp.campaignName}" guardada.`);
-    setShowCampaignForm(false);
-    await onRefreshAll();
+    try {
+      await api('/api/campaigns', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: campaignForm.campaignName,
+          startDate,
+          endDate: campaignForm.endDate || startDate,
+          isoWeek: getISOWeek(startDate),
+          spend: Number(campaignForm.spend || 0),
+          leadsReported: Number(campaignForm.leadsReported || 0),
+          clicks: Number(campaignForm.clicks || 0),
+          modality: campaignForm.type === 'Foráneo' ? 'foreign' : 'local',
+          status: campaignForm.status === 'Pausada' ? 'paused' : 'active',
+        }),
+      });
+      setSuccessMsg(`Campaña manual "${campaignForm.campaignName}" guardada.`);
+      setShowCampaignForm(false);
+      await onRefreshAll();
+    } catch (err) {
+      setParseErrors([{ fileName: 'campaña manual', message: err instanceof ApiError ? err.message : 'No se pudo guardar la campaña' }]);
+    }
   };
 
   // Guardado de Vacante Manual
@@ -361,49 +248,71 @@ export default function ImportModule({
     e.preventDefault();
     if (!vacancyForm.circuit) return;
 
-    const newVac: JobVacancy = {
-      id: `vac_${vacancyForm.type?.toLowerCase()}_${Date.now()}`,
-      type: (vacancyForm.type as any) || 'Sencillo',
-      circuit: vacancyForm.circuit,
-      modality: (vacancyForm.modality as 'Local' | 'Foráneo') || 'Local',
-      company: (vacancyForm.company as any) || 'Transmontes',
-      quota: Number(vacancyForm.quota || 1),
-      status: (vacancyForm.status as any) || 'Abierta',
-    };
-
-    await import('../db').then(m => m.saveSingleToStore('vacancies', newVac));
-    setVacancies([...vacancies, newVac]);
-    setSuccessMsg(`Vacante para circuito "${newVac.circuit}" añadida.`);
-    setShowVacancyForm(false);
-    await onRefreshAll();
+    try {
+      await api('/api/vacancies', {
+        method: 'POST',
+        body: JSON.stringify(
+          vacancyToApi({
+            type: (vacancyForm.type as JobVacancy['type']) || 'Sencillo',
+            circuit: vacancyForm.circuit,
+            modality: (vacancyForm.modality as 'Local' | 'Foráneo') || 'Local',
+            company: (vacancyForm.company as JobVacancy['company']) || 'Transmontes',
+            quota: Number(vacancyForm.quota || 1),
+            status: (vacancyForm.status as JobVacancy['status']) || 'Abierta',
+          }),
+        ),
+      });
+      setSuccessMsg(`Vacante para circuito "${vacancyForm.circuit}" añadida.`);
+      setShowVacancyForm(false);
+      await onRefreshAll();
+    } catch (err) {
+      setParseErrors([{ fileName: 'vacante manual', message: err instanceof ApiError ? err.message : 'No se pudo guardar la vacante' }]);
+    }
   };
 
-  // Guardado de Flota Manual
+  // Guardado de Flota Manual (upsert por empresa)
   const handleSaveFleetManual = async (e: React.FormEvent) => {
     e.preventDefault();
-    await import('../db').then(m => m.saveSingleToStore('fleet', fleetForm));
-    setFleet([...fleet.filter(f => f.company !== fleetForm.company), fleetForm]);
-    setSuccessMsg(`Capacidad de flota para "${fleetForm.company}" actualizada.`);
-    setShowFleetForm(false);
-    await onRefreshAll();
+    try {
+      const existing = fleet.find((f) => f.company === fleetForm.company);
+      const body = JSON.stringify(fleetToApi(fleetForm));
+      if (existing?.id) {
+        await api(`/api/fleet/${existing.id}`, { method: 'PATCH', body });
+      } else {
+        await api('/api/fleet', { method: 'POST', body });
+      }
+      setSuccessMsg(`Capacidad de flota para "${fleetForm.company}" actualizada.`);
+      setShowFleetForm(false);
+      await onRefreshAll();
+    } catch (err) {
+      setParseErrors([{ fileName: 'flota', message: err instanceof ApiError ? err.message : 'No se pudo guardar la flota' }]);
+    }
   };
 
-  // Guardado de Meta Manual
+  // Guardado de Meta Manual (upsert por empresa + tipo)
   const handleSaveGoalManual = async (e: React.FormEvent) => {
     e.preventDefault();
-    const id = `${goalForm.company}_${goalForm.vacanteType}`.toLowerCase().replace(/\s+/g, '_');
-    const newGoal: MonthlyGoal = {
-      id,
+    const goalData = {
       company: goalForm.company || 'Transmontes',
       vacanteType: goalForm.vacanteType || 'Sencillo',
       monthlyTarget: Number(goalForm.monthlyTarget || 0),
     };
-
-    await import('../db').then(m => m.saveSingleToStore('goals', newGoal));
-    setGoals([...goals.filter(g => g.id !== newGoal.id), newGoal]);
-    setSuccessMsg(`Meta mensual de contratación para ${newGoal.company} - ${newGoal.vacanteType} guardada.`);
-    setShowGoalForm(false);
-    await onRefreshAll();
+    try {
+      const existing = goals.find(
+        (g) => g.company === goalData.company && g.vacanteType === goalData.vacanteType,
+      );
+      const body = JSON.stringify(goalToApi(goalData));
+      if (existing) {
+        await api(`/api/goals/${existing.id}`, { method: 'PATCH', body });
+      } else {
+        await api('/api/goals', { method: 'POST', body });
+      }
+      setSuccessMsg(`Meta mensual de contratación para ${goalData.company} - ${goalData.vacanteType} guardada.`);
+      setShowGoalForm(false);
+      await onRefreshAll();
+    } catch (err) {
+      setParseErrors([{ fileName: 'metas', message: err instanceof ApiError ? err.message : 'No se pudo guardar la meta' }]);
+    }
   };
 
   // Helper para semana ISO
@@ -428,42 +337,13 @@ export default function ImportModule({
             Módulo de Administración y Datos
           </h2>
           <p className="text-xs text-slate-500 mt-1 max-w-xl">
-            Sube los reportes diarios de WhatsApp de tus reclutadoras, actualiza el padrón de operadores de nómina, o configura metas operativas.
+            Actualiza el padrón de operadores de nómina, importa campañas (CSV de respaldo) o configura catálogos y metas. Los chats ya llegan solos por los canales conectados.
           </p>
         </div>
 
-        {/* Toggle Modo Acumular o Reemplazar */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
-          <div className="bg-slate-100 p-1 rounded-xl flex">
-            <button
-              onClick={() => setAccumulateMode(true)}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                accumulateMode
-                  ? 'bg-white text-slate-950 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              Acumular cargas (Dedupe)
-            </button>
-            <button
-              onClick={() => setAccumulateMode(false)}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                !accumulateMode
-                  ? 'bg-red-500 text-white shadow-sm'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              Sobrescribir datos
-            </button>
-          </div>
-
-          <button
-            onClick={onExportAll}
-            className="border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition"
-          >
-            <Download size={14} />
-            Exportar Respaldo
-          </button>
+        <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-[10px] text-slate-500 font-medium max-w-xs">
+          Las cargas son <strong>acumulativas e idempotentes</strong>: reimportar el mismo
+          archivo no duplica registros (upsert por llave natural en el backend).
         </div>
       </div>
 
@@ -500,72 +380,49 @@ export default function ImportModule({
       {/* Grid de Uploads */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         
-        {/* Card 1: Chats de WhatsApp */}
+        {/* Card 1: Canales conectados (los chats ya no se importan) */}
         <div className="metric-card p-6 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
-              <span className="bg-orange-50 text-orange-600 p-2.5 rounded-xl border border-orange-100">
+              <span className="bg-green-50 text-green-600 p-2.5 rounded-xl border border-green-100">
                 <FileText size={20} />
               </span>
-              <span className="text-[10px] bg-slate-100 font-mono text-slate-500 font-bold px-2 py-0.5 rounded">ZIP o TXT</span>
+              <span className="text-[10px] bg-green-100 font-mono text-green-700 font-bold px-2 py-0.5 rounded">EN VIVO</span>
             </div>
-            <h3 className="font-bold text-slate-900 mt-4 text-sm">1. Chats de WhatsApp</h3>
+            <h3 className="font-bold text-slate-900 mt-4 text-sm">1. Chats por Webhook</h3>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              Sube el .zip del agente (soporta zip dentro de zip) o archivos .txt. Deduplica por teléfono.
+              Los chats de WhatsApp y Telegram ya llegan automáticamente por los canales
+              conectados al backend: no hay nada que subir. Cada mensaje crea o actualiza su
+              lead al instante.
             </p>
 
-            {/* Agente Propietario del lote */}
+            {/* Alta de reclutadoras (catálogo de agentes) */}
             <div className="mt-4 space-y-2">
-              <label className="text-[10px] font-bold text-slate-600 uppercase">Asignar agente dueño de la carga:</label>
-              <div className="flex gap-2">
-                <select
-                  value={selectedAgent}
-                  onChange={(e) => setSelectedAgent(e.target.value)}
-                  className="flex-1 border border-slate-200 rounded-lg text-xs p-2 bg-slate-50 font-medium focus:ring-1 focus:ring-orange-500 focus:outline-none"
-                >
-                  {agents.map((ag) => (
-                    <option key={ag} value={ag}>
-                      {ag}
-                    </option>
-                  ))}
-                </select>
+              <label className="text-[10px] font-bold text-slate-600 uppercase">Reclutadoras registradas:</label>
+              <div className="flex flex-wrap gap-1.5">
+                {agents.map((ag) => (
+                  <span key={ag} className="bg-slate-100 text-slate-700 text-[10px] font-semibold px-2 py-1 rounded-lg">
+                    {ag}
+                  </span>
+                ))}
               </div>
-
-              {/* Agregar agente */}
               <div className="flex gap-1.5 mt-2">
                 <input
                   type="text"
-                  placeholder="Agregar Agente (+)"
+                  placeholder="Agregar Reclutadora (+)"
                   value={newAgentName}
                   onChange={(e) => setNewAgentName(e.target.value)}
                   className="flex-1 border border-slate-200 rounded-lg text-[11px] px-2 py-1 focus:ring-1 focus:ring-orange-500 focus:outline-none"
                 />
                 <button
                   type="button"
-                  onClick={handleAddAgent}
+                  onClick={() => void handleAddAgent()}
                   className="bg-slate-900 hover:bg-slate-800 text-white px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center"
                 >
                   <Plus size={14} />
                 </button>
               </div>
             </div>
-          </div>
-
-          <div className="mt-6">
-            <label className="border-2 border-dashed border-slate-200 hover:border-orange-400 bg-slate-50 hover:bg-orange-50/20 transition-all rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer">
-              <Upload className="text-slate-400 group-hover:text-orange-500 mb-2" size={24} />
-              <span className="text-xs font-semibold text-slate-700">Subir Chats</span>
-              <span className="text-[10px] text-slate-400 mt-1">Suelte archivos aquí o haga click</span>
-              <input
-                type="file"
-                multiple
-                accept=".txt,.zip"
-                onChange={handleWhatsAppUpload}
-                disabled={loading !== null}
-                className="hidden"
-              />
-            </label>
-            {loading === 'whatsapp' && <span className="text-[10px] font-mono text-orange-500 animate-pulse mt-1 block">Procesando conversaciones...</span>}
           </div>
         </div>
 
@@ -688,18 +545,6 @@ export default function ImportModule({
           </button>
         </div>
 
-        {/* Carga de Respaldo Completo */}
-        <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div>
-            <h4 className="text-xs font-bold text-slate-800">Recuperación e importación de respaldo completo</h4>
-            <p className="text-[10px] text-slate-500 mt-0.5">Si cambias de navegador, importa el archivo JSON descargado previamente para restaurar toda la base de datos.</p>
-          </div>
-          <label className="bg-slate-100 hover:bg-slate-200 text-slate-800 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-2 transition">
-            <Upload size={14} />
-            Importar JSON (.json)
-            <input type="file" accept=".json" onChange={handleBackupUpload} className="hidden" />
-          </label>
-        </div>
       </div>
 
       {/* Formulario Manual de Campañas (Modal/Inline Drawer) */}
@@ -1088,7 +933,7 @@ export default function ImportModule({
       )}
 
       {/* Visualización de Previsualización de los datos */}
-      {(whatsappPreview.length > 0 || operatorPreview.length > 0 || campaignPreview.length > 0) && (
+      {(operatorPreview.length > 0 || campaignPreview.length > 0) && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
           <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
             <FolderOpen className="text-orange-500" size={18} />
@@ -1096,36 +941,6 @@ export default function ImportModule({
           </h3>
 
           <div className="overflow-x-auto border border-slate-100 rounded-xl">
-            {whatsappPreview.length > 0 && (
-              <div className="p-4 space-y-2">
-                <div className="text-xs font-bold text-slate-700">Chats de WhatsApp ({selectedAgent})</div>
-                <table className="w-full text-left border-collapse text-[11px]">
-                  <thead>
-                    <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-100">
-                      <th className="p-2">Teléfono</th>
-                      <th className="p-2">Fecha Entrada</th>
-                      <th className="p-2">Origen</th>
-                      <th className="p-2">¿Respondió?</th>
-                      <th className="p-2">Clasificación</th>
-                      <th className="p-2">Vacante Det.</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {whatsappPreview.map((lead, idx) => (
-                      <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
-                        <td className="p-2 font-mono">{lead.phone}</td>
-                        <td className="p-2">{new Date(lead.firstMessageDate).toLocaleString()}</td>
-                        <td className="p-2 font-semibold text-blue-600">{lead.origin}</td>
-                        <td className="p-2">{lead.responded ? 'Sí' : 'No'}</td>
-                        <td className="p-2">{lead.classification}</td>
-                        <td className="p-2 text-orange-600 font-semibold">{lead.detectedVacante}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
             {operatorPreview.length > 0 && (
               <div className="p-4 space-y-2 border-t border-slate-100">
                 <div className="text-xs font-bold text-slate-700">Operadores de Nómina</div>
