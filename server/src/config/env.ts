@@ -12,6 +12,9 @@ const envSchema = z.object({
   TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
   // Media: tokens para descargar binarios (sin ellos la media queda `pending`).
   WHATSAPP_ACCESS_TOKEN: z.string().min(1).optional(),
+  // Envío saliente WhatsApp: id del número en la Cloud API. Sin él, enviar
+  // por WhatsApp responde CHANNEL_NOT_CONFIGURED (409).
+  WHATSAPP_PHONE_NUMBER_ID: z.string().min(1).optional(),
   TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
   MEDIA_STORAGE_DIR: z.string().min(1).default('./storage/media'),
   // Bases de API con defaults oficiales; configurables para tests/proxies.

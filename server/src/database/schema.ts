@@ -29,6 +29,15 @@ export interface MessageMedia {
   error?: string;
 }
 
+/** Estado de entrega de un mensaje saliente; los entrantes no lo llevan. */
+export interface MessageDelivery {
+  status: 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
+  /** Id del mensaje en el canal (wamid / message_id) una vez enviado. */
+  externalId?: string;
+  error?: string;
+  updatedAt: string;
+}
+
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -120,6 +129,11 @@ export const messages = pgTable(
      *   storageKey?, sizeBytes?, error? }
      */
     media: jsonb('media').$type<MessageMedia | null>(),
+    /**
+     * Solo outbound: { status: queued|sent|delivered|read|failed, externalId?,
+     * error?, updatedAt }. Los estados solo avanzan (delivery-status spec).
+     */
+    delivery: jsonb('delivery').$type<MessageDelivery | null>(),
     sender: text('sender'),
     body: text('body'),
     /** Payload original del webhook, intacto, para reprocesos futuros. */

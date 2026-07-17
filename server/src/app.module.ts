@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BotModule } from './bot/bot.module';
 import { ChannelsModule } from './channels/channels.module';
 import { DatabaseModule } from './database/database.module';
 import { EventsModule } from './events/events.module';
@@ -16,6 +17,7 @@ import { SettingsModule } from './settings/settings.module';
     SettingsModule,
     HealthModule,
     ChannelsModule,
+    BotModule,
   ],
 })
 export class AppModule {}
