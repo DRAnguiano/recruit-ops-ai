@@ -8,8 +8,15 @@ export class DomainError extends Error {
     readonly code: string,
     message: string,
     readonly httpStatus: number = 400,
+    /** Detalle serializable adicional (ej. issues de validación). */
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'DomainError';
   }
+}
+
+/** 404 tipado para recursos inexistentes referenciados por id. */
+export function notFound(code: string, message: string): DomainError {
+  return new DomainError(code, message, 404);
 }

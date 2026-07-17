@@ -7,6 +7,7 @@ import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { resetEnvCache } from '../src/config/env';
+import { configureApp } from '../src/setup-app';
 import * as schema from '../src/database/schema';
 import { telegramMessageUpdate, whatsappStatusPayload, whatsappTextPayload } from './adapters.spec';
 import { createEphemeralDatabase, EphemeralDatabase, REDIS_URL, waitFor } from './helpers';
@@ -40,6 +41,7 @@ describe('webhooks (channel-webhooks)', () => {
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication({ rawBody: true });
+    configureApp(app);
     await app.listen(0);
     const url = await app.getUrl();
     baseUrl = url.replace('[::1]', 'localhost');

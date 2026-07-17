@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { BotModule } from './bot/bot.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
+import { CatalogModule } from './catalog/catalog.module';
 import { ChannelsModule } from './channels/channels.module';
+import { ConversationsModule } from './conversations/conversations.module';
 import { DatabaseModule } from './database/database.module';
 import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
@@ -18,6 +20,8 @@ import { SettingsModule } from './settings/settings.module';
     SettingsModule,
     HealthModule,
     ChannelsModule,
+    ConversationsModule,
+    CatalogModule,
     CampaignsModule,
     BotModule,
   ],

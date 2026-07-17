@@ -26,13 +26,27 @@ export interface QueryEventsInput {
 
 export type DomainEvent = typeof domainEvents.$inferSelect;
 
+export type DomainEventListener = (event: DomainEvent) => void;
+
 /**
  * Única vía de escritura al event log (append-only). Todas las métricas y la
  * auditoría del producto derivan de estos eventos — nunca de contadores ad hoc.
+ *
+ * Tras persistir, cada evento se publica a los suscriptores in-process
+ * (design decisión 3): fire-and-forget, un listener que falla nunca rompe el
+ * append ni la ingestión. Con múltiples réplicas esto migraría a Redis pub/sub.
  */
 @Injectable()
 export class DomainEventsService {
+  private readonly listeners = new Set<DomainEventListener>();
+
   constructor(@Inject(DB) private readonly db: Database) {}
+
+  /** Suscripción in-process a eventos ya persistidos. Devuelve el unsubscribe. */
+  subscribe(listener: DomainEventListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
 
   async append(input: AppendEventInput): Promise<DomainEvent> {
     const rows = await this.db
@@ -49,6 +63,13 @@ export class DomainEventsService {
     const event = rows[0];
     if (!event) {
       throw new Error('Insert into domain_events returned no row');
+    }
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch {
+        // Un suscriptor roto no puede afectar la persistencia ni al resto.
+      }
     }
     return event;
   }

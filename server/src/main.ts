@@ -3,7 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { loadDotenv } from './config/load-dotenv';
 import { loadEnv } from './config/env';
-import { DomainErrorFilter } from './common/domain-error.filter';
+import { configureApp } from './setup-app';
 
 async function bootstrap(): Promise<void> {
   loadDotenv();
@@ -12,7 +12,7 @@ async function bootstrap(): Promise<void> {
   // rawBody: la firma X-Hub-Signature-256 de Meta es HMAC del cuerpo crudo
   // exacto; sin el buffer original la verificación es imposible.
   const app = await NestFactory.create(AppModule, { rawBody: true });
-  app.useGlobalFilters(new DomainErrorFilter());
+  configureApp(app);
   app.enableShutdownHooks();
 
   await app.listen(env.PORT);

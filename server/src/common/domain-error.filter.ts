@@ -13,6 +13,7 @@ export class DomainErrorFilter implements ExceptionFilter {
     response.status(exception.httpStatus).json({
       code: exception.code,
       message: exception.message,
+      ...(exception.details ?? {}),
     });
   }
 }

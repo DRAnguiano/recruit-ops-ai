@@ -13,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { ChannelQueuesService } from '../src/channels/channel-queues.service';
 import { resetEnvCache } from '../src/config/env';
+import { configureApp } from '../src/setup-app';
 import * as schema from '../src/database/schema';
 import { createEphemeralDatabase, EphemeralDatabase, REDIS_URL, waitFor } from './helpers';
 
@@ -108,6 +109,7 @@ describe('media end-to-end (media-ingestion + media-download + queued-ingestion)
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication({ rawBody: true });
+    configureApp(app);
     await app.listen(0);
     baseUrl = (await app.getUrl()).replace('[::1]', 'localhost');
 

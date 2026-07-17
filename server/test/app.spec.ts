@@ -3,6 +3,7 @@ import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { resetEnvCache } from '../src/config/env';
+import { configureApp } from '../src/setup-app';
 import { HealthController } from '../src/health/health.controller';
 import { createEphemeralDatabase, EphemeralDatabase, REDIS_URL } from './helpers';
 
@@ -19,6 +20,7 @@ describe('bootstrap de la app (backend-foundation)', () => {
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
+    configureApp(app);
     app.enableShutdownHooks();
     await app.init();
   });

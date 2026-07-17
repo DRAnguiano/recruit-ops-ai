@@ -36,6 +36,9 @@ const envSchema = z.object({
   GRAPH_API_BASE_URL: z.string().url().default('https://graph.facebook.com/v20.0'),
   TELEGRAM_API_BASE_URL: z.string().url().default('https://api.telegram.org'),
   MARKETING_API_BASE_URL: z.string().url().default('https://graph.facebook.com/v20.0'),
+  // Orígenes permitidos para CORS (separados por coma); default: el dev
+  // server de la SPA (:5173 — el 3000 lo ocupa Chatwoot en esta máquina).
+  CORS_ALLOWED_ORIGINS: z.string().min(1).default('http://localhost:5173'),
 });
 
 export type Env = z.infer<typeof envSchema>;
