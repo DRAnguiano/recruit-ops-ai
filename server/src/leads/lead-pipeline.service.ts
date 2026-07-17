@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import { NormalizedInboundMessage } from '../channels/channel-adapter';
 import { DB, Database } from '../database/database.module';
 import { campaigns, leads } from '../database/schema';
@@ -136,6 +136,41 @@ export class LeadPipelineService {
         messageId: context.messageId,
       },
     });
+  }
+
+  /**
+   * Re-atribución de referrals huérfanos (campaign-attribution spec): leads
+   * que guardaron `referralPayload` sin campaña local ahora pueden matchear
+   * contra campañas recién sincronizadas. Misma regla que attributeLead.
+   */
+  async reattributeOrphans(): Promise<number> {
+    const orphans = await this.db.query.leads.findMany({
+      where: and(isNotNull(leads.referralPayload), isNull(leads.campaignId)),
+    });
+
+    let reattributed = 0;
+    for (const lead of orphans) {
+      const sourceId = (lead.referralPayload as { sourceId?: string } | null)?.sourceId;
+      if (!sourceId) continue;
+      const campaign = await this.db.query.campaigns.findFirst({
+        where: eq(campaigns.externalId, sourceId),
+      });
+      if (!campaign) continue;
+
+      await this.db
+        .update(leads)
+        .set({ campaignId: campaign.id, origin: 'paid', updatedAt: new Date() })
+        .where(eq(leads.id, lead.id));
+      await this.events.append({
+        type: 'lead.attributed',
+        aggregateType: 'lead',
+        aggregateId: lead.id,
+        actor: 'system',
+        payload: { campaignId: campaign.id, sourceId, reattributed: true },
+      });
+      reattributed += 1;
+    }
+    return reattributed;
   }
 
   private async attributeLead(leadId: string, context: PipelineContext): Promise<void> {

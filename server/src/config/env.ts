@@ -24,9 +24,14 @@ const envSchema = z.object({
   // Base pública del backend para URLs absolutas hacia servicios externos
   // (ej. mediaUrl del bot). Default: localhost con el puerto local.
   PUBLIC_BASE_URL: z.string().url().optional(),
+  // Marketing API (read-only, permiso ads_read): sin token/cuenta el sync de
+  // campañas queda deshabilitado con log — nunca datos inventados.
+  META_ADS_ACCESS_TOKEN: z.string().min(1).optional(),
+  META_AD_ACCOUNT_ID: z.string().min(1).optional(),
   // Bases de API con defaults oficiales; configurables para tests/proxies.
   GRAPH_API_BASE_URL: z.string().url().default('https://graph.facebook.com/v20.0'),
   TELEGRAM_API_BASE_URL: z.string().url().default('https://api.telegram.org'),
+  MARKETING_API_BASE_URL: z.string().url().default('https://graph.facebook.com/v20.0'),
 });
 
 export type Env = z.infer<typeof envSchema>;
