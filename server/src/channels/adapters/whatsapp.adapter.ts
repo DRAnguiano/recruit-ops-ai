@@ -39,10 +39,17 @@ interface WhatsAppMessage {
   };
 }
 
+interface WhatsAppStatus {
+  id?: string;
+  status?: string;
+  errors?: Array<{ code?: number; title?: string; message?: string }>;
+}
+
 interface WhatsAppChangeValue {
   messaging_product?: string;
   contacts?: WhatsAppContact[];
   messages?: WhatsAppMessage[];
+  statuses?: WhatsAppStatus[];
 }
 
 interface MetaWebhookPayload {
@@ -51,6 +58,14 @@ interface MetaWebhookPayload {
     changes?: Array<{ field?: string; value?: WhatsAppChangeValue }>;
   }>;
 }
+
+export interface ParsedDeliveryStatus {
+  externalMessageId: string;
+  status: 'sent' | 'delivered' | 'read' | 'failed';
+  error?: string;
+}
+
+const DELIVERY_STATUSES = new Set(['sent', 'delivered', 'read', 'failed']);
 
 /** type de la Cloud API → kind normalizado (voice cuenta como audio). */
 const MEDIA_KINDS: Record<string, MessageKind> = {
@@ -88,6 +103,34 @@ export class WhatsAppAdapter implements ChannelAdapter {
         for (const message of value?.messages ?? []) {
           const normalized = this.parseMessage(message, contactsByWaId);
           if (normalized) result.push(normalized);
+        }
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Statuses de entrega de mensajes salientes (delivery-status spec):
+   * sent/delivered/read/failed por wamid. Estados desconocidos se descartan.
+   */
+  parseStatuses(raw: unknown): ParsedDeliveryStatus[] {
+    const payload = raw as MetaWebhookPayload;
+    if (payload?.object !== 'whatsapp_business_account') return [];
+
+    const result: ParsedDeliveryStatus[] = [];
+    for (const entry of payload.entry ?? []) {
+      for (const change of entry.changes ?? []) {
+        if (change.field !== 'messages') continue;
+        for (const status of change.value?.statuses ?? []) {
+          if (!status.id || !status.status || !DELIVERY_STATUSES.has(status.status)) continue;
+          const firstError = status.errors?.[0];
+          result.push({
+            externalMessageId: status.id,
+            status: status.status as ParsedDeliveryStatus['status'],
+            error: firstError
+              ? `${firstError.code ?? ''} ${firstError.title ?? firstError.message ?? ''}`.trim()
+              : undefined,
+          });
         }
       }
     }

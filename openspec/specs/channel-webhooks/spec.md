@@ -42,13 +42,15 @@ match the configured `TELEGRAM_WEBHOOK_SECRET`; mismatches MUST be rejected with
 
 ### Requirement: Fast ACK policy
 Authenticated webhook requests SHALL be acknowledged with 200 even when the payload
-contains no processable messages (statuses, edits, unknown event types) or when it belongs
-to a channel not yet processed (Messenger, Instagram); unrecognized content MUST never
-produce a 5xx response.
+contains no processable messages (edits, reactions, unknown event types) or when it
+belongs to a channel not yet processed (Messenger, Instagram); unrecognized content MUST
+never produce a 5xx response. WhatsApp `statuses` entries are no longer discarded: they
+are enqueued as delivery updates (see delivery-status) while still being ACKed with 200.
 
 #### Scenario: Status-only payload
 - **WHEN** a valid Meta payload contains only delivery statuses
-- **THEN** the API responds 200 and no message rows are created
+- **THEN** the API responds 200, no message rows are created, and a delivery-update job is
+  enqueued
 
 #### Scenario: Messenger event before its change
 - **WHEN** a valid Meta payload for `page` (Messenger) arrives

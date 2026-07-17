@@ -57,6 +57,13 @@ export class WebhooksController {
     const object = payload?.object;
     if (object === 'whatsapp_business_account') {
       await this.queues.enqueueInbound(this.whatsappAdapter.parse(payload));
+      // Los statuses de entrega dejaron de descartarse (delivery-status spec).
+      const statuses = this.whatsappAdapter.parseStatuses(payload);
+      if (statuses.length > 0) {
+        await this.queues.enqueueDeliveryStatuses(
+          statuses.map((s) => ({ channel: 'whatsapp', ...s })),
+        );
+      }
     } else {
       // page (Messenger) / instagram llegan en add-channels-messenger-instagram.
       this.logger.log(`Evento Meta no procesado aún: object=${String(object)}`);
