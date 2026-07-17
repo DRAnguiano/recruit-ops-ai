@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 
 // Nota de diseño (design.md, decisión 3): los enums de negocio (estados,
@@ -32,6 +33,26 @@ const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 };
+
+/**
+ * Forma común de los catálogos de valores de dominio (configurable-catalogs):
+ * `name` es el identificador que referencian las filas de negocio (inmutable
+ * tras crear; se desactiva, no se renombra), `label` el texto de UI.
+ * Factory porque los column builders de Drizzle no se comparten entre tablas.
+ */
+const catalogEntryColumns = () => ({
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull().unique(),
+  label: text('label').notNull(),
+  active: boolean('active').notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+  ...timestamps,
+});
+
+export const companies = pgTable('companies', catalogEntryColumns());
+export const circuits = pgTable('circuits', catalogEntryColumns());
+export const vacancyTypes = pgTable('vacancy_types', catalogEntryColumns());
+export const leadStatuses = pgTable('lead_statuses', catalogEntryColumns());
 
 /** Persona única, deduplicada por teléfono E.164. */
 export const people = pgTable('people', {
@@ -158,7 +179,9 @@ export const campaigns = pgTable('campaigns', {
   startDate: date('start_date'),
   endDate: date('end_date'),
   isoWeek: text('iso_week'),
-  spendMxn: numeric('spend_mxn', { precision: 12, scale: 2 }).notNull().default('0'),
+  spend: numeric('spend', { precision: 12, scale: 2 }).notNull().default('0'),
+  /** ISO-4217; la moneda real la reporta la cuenta publicitaria (decisión §3.14). */
+  currency: text('currency').notNull().default('USD'),
   leadsReported: integer('leads_reported').notNull().default(0),
   clicks: integer('clicks'),
   targetAgentId: uuid('target_agent_id').references(() => agents.id),
@@ -203,6 +226,10 @@ export const operators = pgTable('operators', {
   status: text('status').notNull().default('active'),
   /** Teléfonos normalizados (10 dígitos) para match lead→operador. */
   normalizedPhones: jsonb('normalized_phones').$type<string[]>().notNull().default([]),
+  /** Qué se contrató (catálogo vacancy_types: full, sencillo, …). */
+  operatorType: text('operator_type'),
+  /** Circuito al que pertenece (catálogo circuits). */
+  circuit: text('circuit'),
   ...timestamps,
 });
 
@@ -216,16 +243,31 @@ export const fleet = pgTable('fleet', {
   ...timestamps,
 });
 
-export const monthlyGoals = pgTable(
-  'monthly_goals',
+/**
+ * Metas por periodo (configurable-catalogs): semanales o mensuales por
+ * empresa + tipo de operador + circuito opcional. La unicidad usa
+ * COALESCE(circuit,'') para que "sin circuito" también sea única.
+ */
+export const goals = pgTable(
+  'goals',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    /** weekly | monthly */
+    periodKind: text('period_kind').notNull().default('monthly'),
     company: text('company').notNull(),
     vacancyType: text('vacancy_type').notNull(),
-    monthlyTarget: integer('monthly_target').notNull().default(0),
+    circuit: text('circuit'),
+    target: integer('target').notNull().default(0),
     ...timestamps,
   },
-  (t) => [uniqueIndex('monthly_goals_company_vacancy_type').on(t.company, t.vacancyType)],
+  (t) => [
+    uniqueIndex('goals_period_company_type_circuit').on(
+      t.periodKind,
+      t.company,
+      t.vacancyType,
+      sql`COALESCE(${t.circuit}, '')`,
+    ),
+  ],
 );
 
 export const workSchedules = pgTable('work_schedules', {
@@ -256,6 +298,31 @@ export const classificationRules = pgTable('classification_rules', {
   active: boolean('active').notNull().default(true),
   ...timestamps,
 });
+
+/**
+ * Plantillas de mensaje aprobadas (message-templates spec): configuración,
+ * nunca código. `body` usa placeholders {{1}}..{{n}} para previsualización;
+ * el payload real de la Cloud API se construye en el backend al enviar.
+ */
+export const messageTemplates = pgTable(
+  'message_templates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    language: text('language').notNull().default('es_MX'),
+    /** whatsapp | telegram (Telegram no exige plantillas; se permiten como atajos). */
+    channel: text('channel').notNull().default('whatsapp'),
+    body: text('body').notNull(),
+    variablesCount: integer('variables_count').notNull().default(0),
+    /** approved | pending | rejected — refleja el estado en Meta (captura manual). */
+    status: text('status').notNull().default('approved'),
+    active: boolean('active').notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('message_templates_name_language_channel').on(t.name, t.language, t.channel),
+  ],
+);
 
 /** Configuración operativa simple clave→valor (ej. conversation_inactivity_days). */
 export const appSettings = pgTable('app_settings', {

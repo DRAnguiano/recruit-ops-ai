@@ -36,6 +36,27 @@
       "when": 1784162871326,
       "tag": "0004_message-media",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784221221170,
+      "tag": "0005_outbound-messaging",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784237984275,
+      "tag": "0006_campaign-currency",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784302283608,
+      "tag": "0007_configurable-catalogs",
+      "breakpoints": true
     }
   ]
 }
