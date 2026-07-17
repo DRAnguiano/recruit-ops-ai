@@ -36,22 +36,39 @@ import KPICard from './components/KPICard';
 import CampaignsView from './components/CampaignsView';
 import CoverageView from './components/CoverageView';
 import ImportModule from './components/ImportModule';
+import AdminView from './components/AdminView';
 
-// Tipos y DB
-import { ChatLead, Operator, MarketingCampaign, FleetData, MonthlyGoal, JobVacancy, WorkScheduleSettings, AppDatabaseBackup } from './types';
-import { getAllFromStore, saveToStoreBulk, clearStore, saveSettings, getSettings, saveSingleToStore, openDB } from './db';
+// Tipos y capa de API (la app ya no usa IndexedDB: migrate-spa-to-api)
+import { CatalogEntry, ChatLead, Operator, MarketingCampaign, FleetData, MonthlyGoal, JobVacancy, WorkScheduleSettings } from './types';
+import { api, ApiError, fetchAllPages, mediaUrl } from './api/client';
+import {
+  ApiAgent,
+  ApiCampaign,
+  ApiConversation,
+  ApiFleet,
+  ApiGoal,
+  ApiLead,
+  ApiMessage,
+  ApiOperator,
+  ApiVacancy,
+  ApiWorkSchedule,
+  mapCampaign,
+  mapFleet,
+  mapGoal,
+  mapLead,
+  mapOperator,
+  mapSchedule,
+  mapVacancy,
+} from './api/mappers';
+import { connectRealtime } from './api/realtime';
 import { normalizePhone } from './utils/whatsappParser';
 
-// Datos predeterminados para seeding de prueba
-import {
-  DEFAULT_VACANCIES,
-  DEFAULT_FLEET,
-  DEFAULT_GOALS,
-  DEFAULT_SETTINGS,
-  DEFAULT_OPERATORS,
-  DEFAULT_CAMPAIGNS,
-  DEFAULT_LEADS
-} from './utils/defaultData';
+const DEFAULT_SETTINGS: WorkScheduleSettings = {
+  workDays: [1, 2, 3, 4, 5],
+  startTime: '07:45',
+  endTime: '17:10',
+  timezone: 'America/Mexico_City',
+};
 
 // Librería de gráficos
 import {
@@ -75,9 +92,20 @@ export default function App() {
   const [campaigns, setCampaigns] = useState<MarketingCampaign[]>([]);
   const [fleet, setFleet] = useState<FleetData[]>([]);
   const [goals, setGoals] = useState<MonthlyGoal[]>([]);
+  const [allGoals, setAllGoals] = useState<ApiGoal[]>([]);
   const [vacancies, setVacancies] = useState<JobVacancy[]>([]);
   const [settings, setSettings] = useState<WorkScheduleSettings>(DEFAULT_SETTINGS);
   const [agents, setAgents] = useState<string[]>(['Adriana', 'Damaris', 'Gladys', 'Hernán']);
+
+  // Catálogos de dominio (add-catalog-admin-ui): estados de lead, empresas,
+  // circuitos y tipos de vacante como datos, nunca hardcodeados en la UI.
+  const [leadStatuses, setLeadStatuses] = useState<CatalogEntry[]>([]);
+  const [companies, setCompanies] = useState<CatalogEntry[]>([]);
+  const [circuits, setCircuits] = useState<CatalogEntry[]>([]);
+  const [vacancyTypes, setVacancyTypes] = useState<CatalogEntry[]>([]);
+  const statusLabels: Map<string, string> = new Map(
+    leadStatuses.map((s) => [s.name, s.label] as [string, string]),
+  );
 
   // Rangos de fecha predeterminados (Mes de Julio 2026 para coincidir con la pauta precargada)
   const [startDate, setStartDate] = useState<string>('2026-07-01');
@@ -89,143 +117,180 @@ export default function App() {
   const [leadStatusFilter, setLeadStatusFilter] = useState('All');
   const [leadClassFilter, setLeadClassFilter] = useState('All');
 
-  // Estado para visor de chat interactivo de WhatsApp
+  // Estado para visor de chat interactivo (conversaciones reales del backend)
   const [activeChatLead, setActiveChatLead] = useState<ChatLead | null>(null);
+  const [activeThreads, setActiveThreads] = useState<
+    Array<{ conversation: ApiConversation; messages: ApiMessage[] }>
+  >([]);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [composerText, setComposerText] = useState('');
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+
+  // Error de conexión con el backend (nunca se muestran datos falsos)
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [agentDirectory, setAgentDirectory] = useState<Map<string, string>>(new Map());
 
   // Estados para vinculación manual de atribución
   const [manualMatchLeadPhone, setManualMatchLeadPhone] = useState<string>('');
   const [manualMatchOperatorId, setManualMatchOperatorId] = useState<string>('');
   const [attributionStatusMsg, setAttributionStatusMsg] = useState<string | null>(null);
 
-  // Cargar datos en el inicio
+  // Carga inicial desde la API del backend (fuente de verdad)
   useEffect(() => {
-    async function initAndLoad() {
-      // Intentar abrir IndexedDB y verificar si hay datos
-      const db = await openDB();
-      
-      const currentLeads = await getAllFromStore<ChatLead>('leads');
-      const currentOperators = await getAllFromStore<Operator>('operators');
-
-      if (currentLeads.length === 0 && currentOperators.length === 0) {
-        // Sembrar base de datos si está completamente vacía
-        console.log('Sembrando IndexedDB con datos por defecto de Transmontes...');
-        await saveToStoreBulk('leads', DEFAULT_LEADS);
-        await saveToStoreBulk('operators', DEFAULT_OPERATORS);
-        await saveToStoreBulk('campaigns', DEFAULT_CAMPAIGNS);
-        await saveToStoreBulk('fleet', DEFAULT_FLEET);
-        await saveToStoreBulk('goals', DEFAULT_GOALS);
-        await saveToStoreBulk('vacancies', DEFAULT_VACANCIES);
-        await saveSettings(DEFAULT_SETTINGS);
-      }
-
-      await loadAllFromDB();
-    }
-    initAndLoad();
+    loadAllFromApi();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadAllFromDB = async () => {
+  const loadAllFromApi = async () => {
     try {
-      const dbLeads = await getAllFromStore<ChatLead>('leads');
-      const dbOperators = await getAllFromStore<Operator>('operators');
-      const dbCampaigns = await getAllFromStore<MarketingCampaign>('campaigns');
-      const dbFleet = await getAllFromStore<FleetData>('fleet');
-      const dbGoals = await getAllFromStore<MonthlyGoal>('goals');
-      const dbVacancies = await getAllFromStore<JobVacancy>('vacancies');
-      const dbSettings = await getSettings();
+      const [
+        apiAgents,
+        apiLeads,
+        apiOperators,
+        apiCampaigns,
+        apiFleet,
+        apiGoals,
+        apiVacancies,
+        apiSchedules,
+        apiLeadStatuses,
+        apiCompanies,
+        apiCircuits,
+        apiVacancyTypes,
+      ] = await Promise.all([
+        api<ApiAgent[]>('/api/agents'),
+        fetchAllPages<ApiLead>('/api/leads'),
+        api<ApiOperator[]>('/api/operators'),
+        api<ApiCampaign[]>('/api/campaigns'),
+        api<ApiFleet[]>('/api/fleet'),
+        api<ApiGoal[]>('/api/goals'),
+        api<ApiVacancy[]>('/api/vacancies'),
+        api<ApiWorkSchedule[]>('/api/work-schedules'),
+        api<CatalogEntry[]>('/api/lead-statuses'),
+        api<CatalogEntry[]>('/api/companies'),
+        api<CatalogEntry[]>('/api/circuits'),
+        api<CatalogEntry[]>('/api/vacancy-types'),
+      ]);
 
-      setLeads(dbLeads);
-      setOperators(dbOperators);
-      setCampaigns(dbCampaigns);
-      setFleet(dbFleet);
-      setGoals(dbGoals);
-      setVacancies(dbVacancies);
-      setSettings(dbSettings);
-
-      // Cargar nombres de agentes únicos detectados
-      const uniqueAgents = Array.from(new Set([
-        ...dbLeads.map(l => l.agent),
-        'Adriana', 'Damaris', 'Gladys', 'Hernán'
-      ]));
-      setAgents(uniqueAgents);
+      const agentNames = new Map(apiAgents.map((a) => [a.id, a.name]));
+      const statusLabelMap = new Map(apiLeadStatuses.map((s) => [s.name, s.label]));
+      setAgentDirectory(agentNames);
+      setLeadStatuses(apiLeadStatuses);
+      setCompanies(apiCompanies);
+      setCircuits(apiCircuits);
+      setVacancyTypes(apiVacancyTypes);
+      setLeads(apiLeads.map((l) => mapLead(l, agentNames, statusLabelMap)));
+      setOperators(apiOperators.map(mapOperator));
+      setCampaigns(apiCampaigns.map((c) => mapCampaign(c, agentNames)));
+      setFleet(apiFleet.map(mapFleet));
+      // La vista de capacidad opera sobre metas mensuales; todas las metas
+      // por periodo (incluidas semanales) se administran en AdminView.
+      setAllGoals(apiGoals);
+      setGoals(apiGoals.filter((g) => g.periodKind === 'monthly').map(mapGoal));
+      setVacancies(apiVacancies.map(mapVacancy));
+      setSettings(apiSchedules[0] ? mapSchedule(apiSchedules[0]) : DEFAULT_SETTINGS);
+      setAgents(apiAgents.filter((a) => a.active).map((a) => a.name));
+      setConnectionError(null);
     } catch (err) {
-      console.error('Error al leer de la IndexedDB:', err);
+      const message =
+        err instanceof ApiError ? err.message : 'Error inesperado al cargar datos del backend';
+      console.error('Error al cargar desde la API:', err);
+      setConnectionError(message);
     }
   };
 
   // Manejo de actualización tras uploads o formulario manual
   const handleRefreshAll = async () => {
-    await loadAllFromDB();
+    await loadAllFromApi();
   };
 
-  // Guardar configuración global de shift
+  // Guardar horario laboral (el backend recalcula métricas de aquí en adelante)
   const handleSaveSettings = async (newSettings: WorkScheduleSettings) => {
-    await saveSettings(newSettings);
-    setSettings(newSettings);
-    // Recalcular leads existentes en base al nuevo shift
-    const updatedLeads = leads.map(lead => {
-      const arrDate = new Date(lead.firstMessageDate);
-      
-      // Encontrar primer mensaje de agente
-      const firstAgentMsg = lead.messages.find(m => m.isAgent);
-      let workMinutes: number | null = null;
-      if (firstAgentMsg) {
-        const { calculateWorkMinutes } = require('./utils/whatsappParser');
-        workMinutes = calculateWorkMinutes(arrDate, new Date(firstAgentMsg.timestamp), newSettings);
+    try {
+      if (settings.id) {
+        const updated = await api<ApiWorkSchedule>(`/api/work-schedules/${settings.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            workDays: newSettings.workDays,
+            startTime: newSettings.startTime,
+            endTime: newSettings.endTime,
+            timezone: newSettings.timezone,
+          }),
+        });
+        setSettings(mapSchedule(updated));
       }
-
-      const { isWithinWorkHours } = require('./utils/whatsappParser');
-      const inWorkHours = isWithinWorkHours(arrDate, newSettings);
-
-      return {
-        ...lead,
-        inWorkHours,
-        firstResponseMinutesWork: workMinutes
-      };
-    });
-
-    await saveToStoreBulk('leads', updatedLeads);
-    setLeads(updatedLeads);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'No se pudo guardar el horario');
+    }
   };
 
-  // Cambio de estatus manual en Leads (CRM)
-  const handleLeadStatusChange = async (phone: string, newStatus: any) => {
-    const updated = leads.map(l => l.phone === phone ? { ...l, status: newStatus } : l);
-    setLeads(updated);
-    const target = updated.find(l => l.phone === phone);
-    if (target) {
-      await saveSingleToStore('leads', target);
+  // Aplica la respuesta del backend (fuente de verdad) sobre el estado local
+  const applyLeadFromApi = (apiLead: ApiLead) => {
+    const mapped = mapLead(apiLead, agentDirectory, statusLabels);
+    setLeads((prev) => prev.map((l) => (l.id === mapped.id ? mapped : l)));
+  };
+
+  // Cambio de estatus manual en Leads (CRM); statusName es el name de dominio
+  // del catálogo lead-statuses (el select ya entrega el name, no el label)
+  const handleLeadStatusChange = async (phone: string, statusName: string) => {
+    const target = leads.find((l) => l.phone === phone);
+    if (!target?.id) return;
+    try {
+      const updated = await api<ApiLead>(`/api/leads/${target.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: statusName }),
+      });
+      applyLeadFromApi(updated);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'No se pudo actualizar el estatus');
     }
   };
 
   // Cambio de notas en Leads (CRM)
   const handleLeadNotesChange = async (phone: string, notes: string) => {
-    const updated = leads.map(l => l.phone === phone ? { ...l, notes } : l);
-    setLeads(updated);
-    const target = updated.find(l => l.phone === phone);
-    if (target) {
-      await saveSingleToStore('leads', target);
+    const target = leads.find((l) => l.phone === phone);
+    if (!target?.id) return;
+    try {
+      const updated = await api<ApiLead>(`/api/leads/${target.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ notes }),
+      });
+      applyLeadFromApi(updated);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'No se pudieron guardar las notas');
+    }
+  };
+
+  // Actualiza una campaña vía API y refleja la respuesta
+  const patchCampaign = async (campaignId: string, patch: Record<string, unknown>) => {
+    try {
+      const updated = await api<ApiCampaign>(`/api/campaigns/${campaignId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+      setCampaigns((prev) =>
+        prev.map((c) => (c.id === campaignId ? mapCampaign(updated, agentDirectory) : c)),
+      );
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'No se pudo actualizar la campaña');
     }
   };
 
   // Solicitar pausa de campaña a Marketing
   const handleRequestPause = async (campaignId: string) => {
-    const timeISO = new Date().toISOString();
-    const updated = campaigns.map(c => c.id === campaignId ? { ...c, pauseRequested: timeISO, status: 'Pausada' as const } : c);
-    setCampaigns(updated);
-    const target = updated.find(c => c.id === campaignId);
-    if (target) {
-      await saveSingleToStore('campaigns', target);
-    }
+    await patchCampaign(campaignId, {
+      status: 'paused',
+      pauseRequestedAt: new Date().toISOString(),
+    });
   };
 
   // Cambiar estatus de campaña manual
   const handleToggleCampaignStatus = async (campaignId: string) => {
-    const updated = campaigns.map(c => c.id === campaignId ? { ...c, status: c.status === 'Activa' ? 'Pausada' as const : 'Activa' as const } : c);
-    setCampaigns(updated);
-    const target = updated.find(c => c.id === campaignId);
-    if (target) {
-      await saveSingleToStore('campaigns', target);
-    }
+    const target = campaigns.find((c) => c.id === campaignId);
+    if (!target) return;
+    await patchCampaign(campaignId, {
+      status: target.status === 'Activa' ? 'paused' : 'active',
+    });
   };
 
   // Atribución Manual de Lead a Operador
@@ -236,72 +301,144 @@ export default function App() {
       return;
     }
 
-    const updatedLeads = leads.map(l => l.phone === manualMatchLeadPhone ? { ...l, matchedOperatorId: manualMatchOperatorId, status: 'Contratado' as const } : l);
-    setLeads(updatedLeads);
+    const targetLead = leads.find((l) => l.phone === manualMatchLeadPhone);
+    const targetOperator = operators.find((o) => o.empNo === manualMatchOperatorId);
+    if (!targetLead?.id || !targetOperator?.id) {
+      setAttributionStatusMsg('No se encontró el lead u operador seleccionado.');
+      return;
+    }
 
-    const targetLead = updatedLeads.find(l => l.phone === manualMatchLeadPhone);
-    if (targetLead) {
-      await saveSingleToStore('leads', targetLead);
+    try {
+      const linked = await api<ApiLead>(`/api/leads/${targetLead.id}/operator`, {
+        method: 'POST',
+        body: JSON.stringify({ operatorId: targetOperator.id }),
+      });
+      const hired = await api<ApiLead>(`/api/leads/${targetLead.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'hired' }),
+      });
+      applyLeadFromApi(hired ?? linked);
       setAttributionStatusMsg('¡Atribución manual vinculada con éxito!');
       setManualMatchLeadPhone('');
       setManualMatchOperatorId('');
       setTimeout(() => setAttributionStatusMsg(null), 3000);
+    } catch (err) {
+      setAttributionStatusMsg(
+        err instanceof ApiError ? err.message : 'No se pudo vincular la atribución',
+      );
     }
   };
 
   // Borrar vinculación de atribución
   const handleRemoveMatch = async (phone: string) => {
-    const updatedLeads = leads.map(l => l.phone === phone ? { ...l, matchedOperatorId: null } : l);
-    setLeads(updatedLeads);
-    const targetLead = updatedLeads.find(l => l.phone === phone);
-    if (targetLead) {
-      await saveSingleToStore('leads', targetLead);
+    const targetLead = leads.find((l) => l.phone === phone);
+    if (!targetLead?.id) return;
+    try {
+      const updated = await api<ApiLead>(`/api/leads/${targetLead.id}/operator`, {
+        method: 'POST',
+        body: JSON.stringify({ operatorId: null }),
+      });
+      applyLeadFromApi(updated);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'No se pudo quitar la vinculación');
     }
   };
 
-  // Restaurar respaldo completo desde archivo JSON externo
-  const handleBackupRestore = async (backup: AppDatabaseBackup) => {
-    // Vaciar e inyectar
-    await clearStore('leads');
-    await clearStore('operators');
-    await clearStore('campaigns');
-    await clearStore('fleet');
-    await clearStore('goals');
-    await clearStore('vacancies');
+  // ================= VISOR DE CHAT: CONVERSACIONES REALES DEL BACKEND =================
 
-    if (backup.leads) await saveToStoreBulk('leads', backup.leads);
-    if (backup.operators) await saveToStoreBulk('operators', backup.operators);
-    if (backup.campaigns) await saveToStoreBulk('campaigns', backup.campaigns);
-    if (backup.fleet) await saveToStoreBulk('fleet', backup.fleet);
-    if (backup.goals) await saveToStoreBulk('goals', backup.goals);
-    if (backup.vacancies) await saveToStoreBulk('vacancies', backup.vacancies);
-    if (backup.settings) await saveSettings(backup.settings);
-
-    await loadAllFromDB();
+  const openChatViewer = async (lead: ChatLead) => {
+    setActiveChatLead(lead);
+    setActiveThreads([]);
+    setSendError(null);
+    setComposerText('');
+    if (!lead.personId) return;
+    setThreadLoading(true);
+    try {
+      const conversations = await fetchAllPages<ApiConversation>(
+        `/api/conversations?personId=${lead.personId}`,
+      );
+      const threads = await Promise.all(
+        conversations.map(async (c) => ({
+          // El detalle trae la ventana de 24 h (canSendFreeform / windowExpiresAt)
+          conversation: await api<ApiConversation>(`/api/conversations/${c.id}`),
+          messages: await fetchAllPages<ApiMessage>(`/api/conversations/${c.id}/messages`),
+        })),
+      );
+      threads.sort(
+        (a, b) => Date.parse(a.conversation.startedAt) - Date.parse(b.conversation.startedAt),
+      );
+      setActiveThreads(threads);
+    } catch (err) {
+      setSendError(err instanceof ApiError ? err.message : 'No se pudo cargar la conversación');
+    } finally {
+      setThreadLoading(false);
+    }
   };
 
-  // Descargar todo el IndexedDB en un JSON
-  const handleExportAll = () => {
-    const backup: AppDatabaseBackup = {
-      leads,
-      operators,
-      campaigns,
-      fleet,
-      goals,
-      vacancies,
-      settings
+  // Conversación destino del composer: la abierta más reciente
+  const activeSendTarget =
+    [...activeThreads].reverse().find((t) => t.conversation.status === 'open') ?? null;
+
+  const handleSendMessage = async () => {
+    const text = composerText.trim();
+    if (!activeSendTarget || !text || sending) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      await api(`/api/conversations/${activeSendTarget.conversation.id}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ body: text }),
+      });
+      setComposerText('');
+      // Recargar solo el hilo destino con el mensaje recién enviado
+      const messages = await fetchAllPages<ApiMessage>(
+        `/api/conversations/${activeSendTarget.conversation.id}/messages`,
+      );
+      setActiveThreads((prev) =>
+        prev.map((t) =>
+          t.conversation.id === activeSendTarget.conversation.id ? { ...t, messages } : t,
+        ),
+      );
+    } catch (err) {
+      setSendError(err instanceof ApiError ? err.message : 'No se pudo enviar el mensaje');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // ================= TIEMPO REAL: WS CON REFETCH DEBOUNCED =================
+
+  const activeChatLeadRef = React.useRef<ChatLead | null>(null);
+  activeChatLeadRef.current = activeChatLead;
+  const leadsRefetchTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const threadRefetchTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const disconnect = connectRealtime((frame) => {
+      const relevant =
+        frame.type.startsWith('message.') ||
+        frame.type.startsWith('lead.') ||
+        frame.type.startsWith('conversation.');
+      if (!relevant) return;
+
+      if (leadsRefetchTimer.current) clearTimeout(leadsRefetchTimer.current);
+      leadsRefetchTimer.current = setTimeout(() => void loadAllFromApi(), 2000);
+
+      if (activeChatLeadRef.current) {
+        if (threadRefetchTimer.current) clearTimeout(threadRefetchTimer.current);
+        threadRefetchTimer.current = setTimeout(() => {
+          if (activeChatLeadRef.current) void openChatViewer(activeChatLeadRef.current);
+        }, 1000);
+      }
+    });
+    return () => {
+      disconnect();
+      if (leadsRefetchTimer.current) clearTimeout(leadsRefetchTimer.current);
+      if (threadRefetchTimer.current) clearTimeout(threadRefetchTimer.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(backup, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `TorreControl_Respaldo_${new Date().toISOString().split('T')[0]}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-  };
-
-  // Exportar cualquier matriz de datos en un CSV
   const exportToCSV = (headers: string[], rows: string[][], fileName: string) => {
     const csvContent = [
       headers.join(','),
@@ -349,7 +486,7 @@ export default function App() {
 
   const medianResponseTimeWork = computeMedianResponseTime(filteredLeadsForPeriod);
   const realConversations = filteredLeadsForPeriod.filter(l => l.isConversationReal).length;
-  const hiringCount = filteredLeadsForPeriod.filter(l => l.status === 'Contratado').length;
+  const hiringCount = filteredLeadsForPeriod.filter(l => l.statusName === 'hired').length;
   const estimatedConversion = filteredLeadsForPeriod.length > 0 
     ? (hiringCount / filteredLeadsForPeriod.length) * 100 
     : 0;
@@ -361,7 +498,7 @@ export default function App() {
     const responsePct = agentLeads.length > 0 ? (agentResponded.length / agentLeads.length) * 100 : 0;
     const medianTime = computeMedianResponseTime(agentLeads);
     const realConv = agentLeads.filter(l => l.isConversationReal).length;
-    const hires = agentLeads.filter(l => l.status === 'Contratado').length;
+    const hires = agentLeads.filter(l => l.statusName === 'hired').length;
     const conversion = agentLeads.length > 0 ? (hires / agentLeads.length) * 100 : 0;
 
     return {
@@ -423,15 +560,15 @@ export default function App() {
       (l.detectedVacante || '').toLowerCase().includes(leadSearch.toLowerCase());
 
     const agentMatch = leadAgentFilter === 'All' || l.agent.toLowerCase() === leadAgentFilter.toLowerCase();
-    const statusMatch = leadStatusFilter === 'All' || l.status.toLowerCase() === leadStatusFilter.toLowerCase();
+    const statusMatch = leadStatusFilter === 'All' || l.statusName === leadStatusFilter;
     const classMatch = leadClassFilter === 'All' || l.classification.toLowerCase() === leadClassFilter.toLowerCase();
 
     return searchMatch && agentMatch && statusMatch && classMatch;
   });
 
-  // Pipeline activo: En proceso o Documentos, ordenados por días inactivos de manera descendente
+  // Pipeline activo: en proceso o papelería, ordenados por días inactivos de manera descendente
   const activePipelineLeads = leads
-    .filter(l => l.status === 'En proceso' || l.status === 'Documentos')
+    .filter(l => l.statusName === 'in_progress' || l.statusName === 'documents')
     .map(l => {
       const diffMs = new Date().getTime() - new Date(l.lastContactDate).getTime();
       const daysInactive = Math.round(diffMs / 86400000);
@@ -527,9 +664,9 @@ export default function App() {
   const weeklyHiresData = getWeeklyHiresChartData();
 
   // Prospectos calificados listos para vinculación manual
-  const unlinkedLeads = leads.filter(l => 
-    !matchedHires.some(mh => mh.lead.phone === l.phone) && 
-    (l.status === 'Contratado' || l.status === 'Documentos')
+  const unlinkedLeads = leads.filter(l =>
+    !matchedHires.some(mh => mh.lead.phone === l.phone) &&
+    (l.statusName === 'hired' || l.statusName === 'documents')
   );
 
   const unlinkedOperators = operators.filter(op => 
@@ -588,11 +725,22 @@ export default function App() {
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        leadsCount={leads.filter(l => l.status === 'Nuevo').length}
+        leadsCount={leads.filter(l => l.statusName === 'new').length}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col overflow-hidden">
+        {connectionError && (
+          <div className="bg-red-600 text-white text-xs font-semibold px-8 py-2 flex items-center justify-between shrink-0">
+            <span>Sin conexión con el backend: {connectionError}</span>
+            <button
+              onClick={() => void loadAllFromApi()}
+              className="underline font-bold cursor-pointer"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
         
         {/* Header Global */}
         <header className="h-16 bg-white border-b border-slate-200/80 flex items-center justify-between px-8 shrink-0 z-10">
@@ -813,7 +961,7 @@ export default function App() {
                     {activePipelineLeads.slice(0, 6).map((lead) => (
                       <div
                         key={lead.phone}
-                        onClick={() => setActiveChatLead(lead)}
+                        onClick={() => void openChatViewer(lead)}
                         className="bg-slate-50 hover:bg-orange-50/25 transition cursor-pointer border border-slate-200/60 rounded-xl p-3 shrink-0 w-52 flex flex-col justify-between"
                       >
                         <div>
@@ -870,12 +1018,9 @@ export default function App() {
                     className="border border-slate-200 rounded-xl text-xs p-2.5 bg-slate-50 focus:outline-none font-semibold text-slate-600"
                   >
                     <option value="All">Estatus: Todos</option>
-                    <option value="Nuevo">Nuevo</option>
-                    <option value="En proceso">En proceso</option>
-                    <option value="Documentos">Documentos</option>
-                    <option value="Contratado">Contratado</option>
-                    <option value="Descartado">Descartado</option>
-                    <option value="Sin respuesta">Sin respuesta</option>
+                    {leadStatuses.map(s => (
+                      <option key={s.name} value={s.name}>{s.label}</option>
+                    ))}
                   </select>
 
                   <select
@@ -928,7 +1073,7 @@ export default function App() {
                         <tr key={lead.phone} className="hover:bg-slate-50/40">
                           <td className="p-3 text-center">
                             <button
-                              onClick={() => setActiveChatLead(lead)}
+                              onClick={() => void openChatViewer(lead)}
                               title="Ver conversación completa de WhatsApp"
                               className="text-orange-500 hover:text-orange-600 bg-orange-50 p-2 rounded-lg border border-orange-100 transition inline-block cursor-pointer"
                             >
@@ -970,16 +1115,19 @@ export default function App() {
                           <td className="p-3 font-semibold text-orange-600">{lead.detectedVacante}</td>
                           <td className="p-3">
                             <select
-                              value={lead.status}
-                              onChange={(e) => handleLeadStatusChange(lead.phone, e.target.value as any)}
+                              value={lead.statusName}
+                              onChange={(e) => void handleLeadStatusChange(lead.phone, e.target.value)}
                               className="border border-slate-200 rounded-lg p-1.5 text-xs font-semibold bg-slate-50 text-slate-800 focus:outline-none"
                             >
-                              <option value="Nuevo">Nuevo</option>
-                              <option value="En proceso">En proceso</option>
-                              <option value="Documentos">Documentos</option>
-                              <option value="Contratado">Contratado</option>
-                              <option value="Descartado">Descartado</option>
-                              <option value="Sin respuesta">Sin respuesta</option>
+                              {/* Activos para escribir + el estado actual aunque esté inactivo */}
+                              {leadStatuses
+                                .filter(s => s.active || s.name === lead.statusName)
+                                .map(s => (
+                                  <option key={s.name} value={s.name}>{s.label}</option>
+                                ))}
+                              {!leadStatuses.some(s => s.name === lead.statusName) && (
+                                <option value={lead.statusName}>{lead.status}</option>
+                              )}
                             </select>
                           </td>
                           <td className="p-3">
@@ -1284,7 +1432,6 @@ export default function App() {
           {activeTab === 'coverage' && (
             <CoverageView
               settings={settings}
-              onSaveSettings={handleSaveSettings}
               leads={leads}
             />
           )}
@@ -1306,8 +1453,20 @@ export default function App() {
               setGoals={setGoals}
               settings={settings}
               onRefreshAll={handleRefreshAll}
-              onBackupRestore={handleBackupRestore}
-              onExportAll={handleExportAll}
+            />
+          )}
+
+          {/* ================= TAB 8: ADMINISTRACIÓN (MODULAR) ================= */}
+          {activeTab === 'admin' && (
+            <AdminView
+              companies={companies}
+              circuits={circuits}
+              vacancyTypes={vacancyTypes}
+              leadStatuses={leadStatuses}
+              goals={allGoals}
+              settings={settings}
+              onSaveSettings={handleSaveSettings}
+              onRefreshAll={handleRefreshAll}
             />
           )}
         </div>
@@ -1357,22 +1516,99 @@ export default function App() {
               </div>
             </div>
 
-            {/* Historial de Mensajes de WhatsApp */}
+            {/* Historial real de mensajes (todas las conversaciones de la persona) */}
             <div className="flex-1 overflow-y-auto p-6 bg-slate-100 space-y-4">
-              {activeChatLead.messages.map((msg, idx) => (
-                <div key={idx} className={`flex flex-col ${msg.isAgent ? 'items-end' : 'items-start'}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs shadow-sm ${
-                    msg.isAgent
-                      ? 'bg-slate-900 text-white rounded-tr-none'
-                      : 'bg-white text-slate-800 rounded-tl-none'
-                  }`}>
-                    {msg.text}
+              {threadLoading && (
+                <p className="text-center text-[11px] text-slate-400 font-medium">Cargando conversaciones…</p>
+              )}
+              {!threadLoading && activeThreads.length === 0 && (
+                <p className="text-center text-[11px] text-slate-400 font-medium">
+                  Sin conversaciones registradas en los canales conectados.
+                </p>
+              )}
+              {activeThreads.map((thread) => (
+                <div key={thread.conversation.id} className="space-y-4">
+                  <div className="text-center">
+                    <span className="text-[9px] uppercase tracking-wide font-bold text-slate-400 bg-slate-200 px-2 py-0.5 rounded-full">
+                      {thread.conversation.channel} · {new Date(thread.conversation.startedAt).toLocaleDateString('es-MX')}
+                      {thread.conversation.status === 'closed' ? ' · cerrada' : ''}
+                    </span>
                   </div>
-                  <span className="text-[9px] text-slate-400 font-mono mt-1 px-1">
-                    {msg.isAgent ? activeChatLead.agent : 'Candidato'} — {new Date(msg.timestamp).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                  </span>
+                  {thread.messages.map((msg) => {
+                    const isAgent = msg.direction === 'outbound';
+                    return (
+                      <div key={msg.id} className={`flex flex-col ${isAgent ? 'items-end' : 'items-start'}`}>
+                        <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs shadow-sm ${
+                          isAgent
+                            ? 'bg-slate-900 text-white rounded-tr-none'
+                            : 'bg-white text-slate-800 rounded-tl-none'
+                        }`}>
+                          {msg.type === 'audio' && msg.media?.status === 'stored' && (
+                            <audio controls preload="none" className="max-w-full" src={mediaUrl(msg.id)} />
+                          )}
+                          {msg.type === 'image' && msg.media?.status === 'stored' && (
+                            <img src={mediaUrl(msg.id)} alt="Imagen recibida" className="max-w-full rounded-lg" />
+                          )}
+                          {(msg.type === 'document' || msg.type === 'video') && msg.media?.status === 'stored' && (
+                            <a href={mediaUrl(msg.id)} target="_blank" rel="noreferrer" className="underline font-semibold">
+                              Abrir {msg.media?.filename ?? msg.type}
+                            </a>
+                          )}
+                          {msg.type !== 'text' && msg.media && msg.media.status !== 'stored' && (
+                            <span className="italic opacity-70">
+                              [{msg.type}] {msg.media.status === 'pending' ? 'descargando…' : 'descarga fallida'}
+                            </span>
+                          )}
+                          {msg.body && <p className={msg.type !== 'text' ? 'mt-1.5' : ''}>{msg.body}</p>}
+                        </div>
+                        <span className="text-[9px] text-slate-400 font-mono mt-1 px-1">
+                          {isAgent ? activeChatLead.agent : 'Candidato'} — {new Date(msg.sentAt).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true })}
+                          {isAgent && msg.delivery ? ` · ${msg.delivery.status === 'failed' ? '✕ falló' : msg.delivery.status}` : ''}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               ))}
+            </div>
+
+            {/* Composer: envío por el canal (respeta la ventana de 24 h) */}
+            <div className="p-4 border-t border-slate-100 shrink-0 bg-white space-y-2">
+              {sendError && (
+                <p className="text-[10px] text-red-600 font-semibold">{sendError}</p>
+              )}
+              {activeSendTarget ? (
+                activeSendTarget.conversation.canSendFreeform !== false ? (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={composerText}
+                      onChange={(e) => setComposerText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void handleSendMessage();
+                      }}
+                      placeholder={`Responder por ${activeSendTarget.conversation.channel}…`}
+                      className="flex-1 text-xs border border-slate-200 rounded-lg p-2 focus:ring-1 focus:ring-orange-500 focus:outline-none"
+                    />
+                    <button
+                      onClick={() => void handleSendMessage()}
+                      disabled={sending || !composerText.trim()}
+                      className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white text-xs font-bold px-4 rounded-lg cursor-pointer"
+                    >
+                      {sending ? '…' : 'Enviar'}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 font-medium">
+                    La ventana de 24 h de WhatsApp expiró: solo se pueden enviar plantillas
+                    aprobadas (disponible próximamente en esta vista).
+                  </p>
+                )
+              ) : (
+                <p className="text-[10px] text-slate-400 font-medium">
+                  No hay conversación abierta para responder.
+                </p>
+              )}
             </div>
 
             {/* Footer / Nota rápida */}

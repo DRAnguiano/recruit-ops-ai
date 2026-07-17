@@ -300,6 +300,7 @@ export function parseWhatsAppChat(text: string, agentName: string, settings: Wor
     isConversationReal,
     classification,
     detectedVacante,
+    statusName: 'new',
     status: 'Nuevo',
     notes: '',
     lastContactDate: parsedMessages[parsedMessages.length - 1].timestamp,

@@ -34,9 +34,10 @@ export default function CampaignsView({
   onRequestPause
 }: CampaignsViewProps) {
 
-  // Formatear moneda MXN
-  const formatMXN = (num: number) => {
-    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(num);
+  // Formatear moneda: la reporta cada campaña (default USD, decisión §3.14)
+  const mainCurrency = campaigns[0]?.currency ?? 'USD';
+  const formatMoney = (num: number, currency: string = mainCurrency) => {
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency }).format(num);
   };
 
   // Encontrar vacante por ID
@@ -67,7 +68,7 @@ export default function CampaignsView({
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="metric-card p-5">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Inversión Total</span>
-          <div className="text-xl font-bold text-slate-900 mt-1">{formatMXN(totalSpend)}</div>
+          <div className="text-xl font-bold text-slate-900 mt-1">{formatMoney(totalSpend)}</div>
           <p className="text-[10px] text-slate-500 mt-2 font-mono">Pauta acumulada en campañas</p>
         </div>
 
@@ -85,7 +86,7 @@ export default function CampaignsView({
 
         <div className="metric-card p-5">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Costo por Lead (Parsed)</span>
-          <div className="text-xl font-bold text-slate-900 mt-1">{formatMXN(avgCPLParsed)}</div>
+          <div className="text-xl font-bold text-slate-900 mt-1">{formatMoney(avgCPLParsed)}</div>
           <p className="text-[10px] text-slate-500 mt-2 font-mono">CPL Real sobre chats</p>
         </div>
       </div>
@@ -108,7 +109,7 @@ export default function CampaignsView({
               <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-100">
                 <th className="p-3">Campaña</th>
                 <th className="p-3">Estatus</th>
-                <th className="p-3">Gasto (MXN)</th>
+                <th className="p-3">Gasto</th>
                 <th className="p-3">Clicks</th>
                 <th className="p-3">Leads FB</th>
                 <th className="p-3">Leads WA</th>
@@ -133,7 +134,7 @@ export default function CampaignsView({
                 const parsedCount = leadsParsed.length;
 
                 // Contratos logrados por el agente destino en esta vacante
-                const hiresCount = leadsParsed.filter(l => l.status === 'Contratado').length;
+                const hiresCount = leadsParsed.filter(l => l.statusName === 'hired').length;
 
                 // Clics opcionales
                 const clicks = camp.clicks || 0;
@@ -162,17 +163,17 @@ export default function CampaignsView({
                         {camp.status}
                       </span>
                     </td>
-                    <td className="p-3 font-mono font-medium">{formatMXN(camp.spend)}</td>
+                    <td className="p-3 font-mono font-medium">{formatMoney(camp.spend, camp.currency ?? mainCurrency)}</td>
                     <td className="p-3 font-mono text-slate-500">{clicks || '-'}</td>
                     <td className="p-3 font-mono text-slate-600">{camp.leadsReported}</td>
                     <td className="p-3 font-mono font-bold text-slate-900">{parsedCount}</td>
                     <td className="p-3 font-mono text-slate-500">
                       {clicks > 0 ? `${clickToLead.toFixed(1)}%` : 'N/A'}
                     </td>
-                    <td className="p-3 font-mono font-semibold text-slate-900">{formatMXN(cplReal)}</td>
+                    <td className="p-3 font-mono font-semibold text-slate-900">{formatMoney(cplReal)}</td>
                     <td className="p-3 font-mono text-slate-700 font-medium">{hiresCount}</td>
                     <td className="p-3 font-mono text-slate-900 font-semibold bg-slate-50/50">
-                      {hiresCount > 0 ? formatMXN(cph) : <span className="text-[10px] text-slate-400">Sin contrataciones</span>}
+                      {hiresCount > 0 ? formatMoney(cph) : <span className="text-[10px] text-slate-400">Sin contrataciones</span>}
                     </td>
                     <td className="p-3">
                       {isDiscrepant ? (
@@ -229,8 +230,8 @@ export default function CampaignsView({
                   l.detectedVacante.toLowerCase() === vac.type.toLowerCase()
                 );
 
-                const contratados = leadsRelated.filter(l => l.status === 'Contratado').length;
-                const enProceso = leadsRelated.filter(l => l.status === 'En proceso' || l.status === 'Documentos').length;
+                const contratados = leadsRelated.filter(l => l.statusName === 'hired').length;
+                const enProceso = leadsRelated.filter(l => l.statusName === 'in_progress' || l.statusName === 'documents').length;
 
                 // Cupo restante
                 const cupoRestante = vac.quota - contratados - enProceso;

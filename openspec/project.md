@@ -199,15 +199,20 @@ En orden de dependencia (cada uno atómico, ~12-15 tareas máx.):
 2. `add-channel-webhooks` — endpoint Meta (verificación+firma) y Telegram, `ChannelAdapter`, ingestión idempotente de mensajes ✅
 3. `add-lead-pipeline` — mensaje→conversación→lead, clasificación determinista, atribución por `referral`, dedup por teléfono, cierre de conversación por inactividad configurable (default 21 días) ✅
 4. `add-media-messages` — persistir audio/imagen/documento con tipo y media id; ingestión pasa a cola BullMQ; worker descarga media de Graph API a S3/MinIO ✅ (archivado 2026-07-15)
-5. `add-api-for-spa` — API REST + WebSockets para todas las vistas, asignación de conversaciones y toggle bot/humano; la SPA migra de IndexedDB a la API
-6. `add-outbound-messaging` — envío desde el inbox, ventana 24 h, plantillas, estado de entrega
-7. `add-campaign-sync` — Meta Marketing API read-only, job periódico, CSV fallback
-8. `add-bot-gateway` — contrato con FastAPI (texto y media), validación de acciones, lock atómico bot/humano
-9. `add-channels-messenger-instagram` — activar los canales restantes sobre el adaptador
-10. `add-configurable-catalogs` — CRUD desde UI y API de: empresas, agentes, vacantes
-    (tipo/circuito/cupo), estados de lead, metas por periodo (semanal/mensual) por
-    empresa+tipo+circuito, horarios múltiples, reglas de clasificación, moneda por
-    campaña y credenciales por canal (cifradas)
+5. `add-api-for-spa` — API REST + WebSockets para todas las vistas, asignación de conversaciones y toggle bot/humano ✅ (archivado 2026-07-16)
+6. `add-outbound-messaging` — envío desde el inbox, ventana 24 h, plantillas, estado de entrega ✅ (archivado 2026-07-16)
+6b. `migrate-spa-to-api` — la SPA abandona IndexedDB y consume la API (adelantado a petición del usuario para ver el sistema vivo) ✅ (archivado 2026-07-16)
+7. `add-campaign-sync` — Meta Marketing API read-only, job periódico, CSV fallback; `spend` + `currency` USD ✅ (archivado 2026-07-16)
+8. `add-bot-gateway` — contrato con FastAPI (texto y media), validación de acciones, lock atómico bot/humano ✅ (archivado 2026-07-17)
+9. `add-channels-messenger-instagram` — activar los canales restantes sobre el adaptador ✅ (archivado 2026-07-17)
+10. `add-configurable-catalogs` — catálogos como datos + API: empresas, circuitos,
+    tipos de vacante, estados de lead (sembrados desde datos reales, validación
+    cacheada), metas por periodo (semanal/mensual) por empresa+tipo+circuito, tipo y
+    circuito del operador contratado, moneda editable por campaña ✅ (archivado 2026-07-17)
+10b. `add-catalog-admin-ui` — vista de administración en la SPA para editar todos los
+    catálogos, settings y metas por periodo ✅ (archivado 2026-07-17)
+10c. `add-channel-credentials` — credenciales por canal en DB cifradas con llave
+    maestra de env (multi-página/multi-número), reemplazando las env por canal
 11. `add-custom-fields` — diccionario de campos personalizados para leads/personas
     (tipo, opciones, requerido), captura desde UI; precursor del score auditable
 12. *(F3)* `add-campaign-management`, `add-scoring`, `add-documents`, `add-followups`

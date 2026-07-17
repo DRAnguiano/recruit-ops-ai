@@ -10,7 +10,23 @@ export interface Message {
   isAgent: boolean;
 }
 
+/**
+ * Entrada de un catálogo de dominio (empresas, circuitos, tipos de vacante,
+ * estados de lead): add-configurable-catalogs. `name` es el identificador de
+ * dominio (inmutable); `label` es el texto para UI.
+ */
+export interface CatalogEntry {
+  id: string;
+  name: string;
+  label: string;
+  active: boolean;
+  sortOrder: number;
+}
+
 export interface ChatLead {
+  id?: string; // uuid del lead en el backend (migrate-spa-to-api)
+  personId?: string; // uuid de la persona (para cargar sus conversaciones)
+  matchedOperatorUuid?: string | null; // uuid del operador vinculado (API)
   phone: string; // Last 10 digits normalized
   agent: string; // Adriana, Damaris, Gladys, Hernán, etc.
   firstMessageDate: string; // ISO String
@@ -21,7 +37,10 @@ export interface ChatLead {
   isConversationReal: boolean;
   classification: 'Vacante' | 'RH Interno' | 'Otro';
   detectedVacante: string; // e.g. Sencillo, Full, 5ta Rueda, Escuelita, Otro
-  status: 'Nuevo' | 'En proceso' | 'Documentos' | 'Contratado' | 'Descartado' | 'Sin respuesta';
+  /** Nombre de dominio del estado (catálogo lead-statuses, ej. 'in_progress'). */
+  statusName: string;
+  /** Label del estado para UI, resuelto desde el catálogo. */
+  status: string;
   notes: string;
   lastContactDate: string; // ISO String of last message
   inWorkHours: boolean;
@@ -32,6 +51,7 @@ export interface ChatLead {
 }
 
 export interface Operator {
+  id?: string; // uuid en el backend
   empNo: string; // # Emp
   company: string; // Transmontes, TM Transportation, TM Transfer
   name: string;
@@ -49,7 +69,8 @@ export interface MarketingCampaign {
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
   isoWeek: string; // YYYY-Www
-  spend: number; // gasto_mxn
+  spend: number; // monto en `currency`
+  currency?: string; // ISO-4217, default USD
   leadsReported: number; // leads_reportados
   targetAgent: string; // agente_destino
   type: 'Local' | 'Foráneo';
@@ -60,6 +81,7 @@ export interface MarketingCampaign {
 }
 
 export interface FleetData {
+  id?: string; // uuid en el backend
   company: 'Transmontes' | 'TM Transportation' | 'TM Transfer';
   tractosTotales: number;
   tractosEnServicio: number;
@@ -85,6 +107,7 @@ export interface JobVacancy {
 }
 
 export interface WorkScheduleSettings {
+  id?: string; // uuid del work_schedule en el backend
   workDays: number[]; // e.g. [1, 2, 3, 4, 5] (Monday to Friday)
   startTime: string; // "HH:MM" e.g. "07:45"
   endTime: string; // "HH:MM" e.g. "17:10"

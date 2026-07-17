@@ -3,33 +3,23 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import {
   CalendarDays,
   Clock,
-  AlertTriangle,
-  Check,
-  Save,
   Moon,
   Sun,
-  ShieldCheck,
-  Percent
+  ShieldCheck
 } from 'lucide-react';
 import { WorkScheduleSettings, ChatLead } from '../types';
 
 interface CoverageViewProps {
   settings: WorkScheduleSettings;
-  onSaveSettings: (settings: WorkScheduleSettings) => Promise<void>;
   leads: ChatLead[];
 }
 
-export default function CoverageView({ settings, onSaveSettings, leads }: CoverageViewProps) {
-  // Estado local para edición de jornada
-  const [workDays, setWorkDays] = useState<number[]>(settings.workDays);
-  const [startTime, setStartTime] = useState<string>(settings.startTime);
-  const [endTime, setEndTime] = useState<string>(settings.endTime);
-  const [timezone, setTimezone] = useState<string>(settings.timezone);
-  const [isSaved, setIsSaved] = useState(false);
+export default function CoverageView({ settings, leads }: CoverageViewProps) {
+  const { workDays, startTime, endTime } = settings;
 
   // Días de la semana
   const DAYS_OF_WEEK = [
@@ -41,26 +31,6 @@ export default function CoverageView({ settings, onSaveSettings, leads }: Covera
     { value: 6, label: 'Sábado' },
     { value: 0, label: 'Domingo' }
   ];
-
-  const handleDayToggle = (day: number) => {
-    if (workDays.includes(day)) {
-      setWorkDays(workDays.filter(d => d !== day));
-    } else {
-      setWorkDays([...workDays, day]);
-    }
-  };
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await onSaveSettings({
-      workDays,
-      startTime,
-      endTime,
-      timezone
-    });
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 3000);
-  };
 
   // Calcular métricas de Cobertura
   const totalLeads = leads.length;
@@ -93,71 +63,33 @@ export default function CoverageView({ settings, onSaveSettings, leads }: Covera
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-12">
-      {/* Configuración de Jornada */}
+      {/* Jornada vigente (editable desde Administración) */}
       <div className="metric-card p-6">
-        <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 mb-4">
+        <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 mb-1">
           <Clock className="text-orange-500" size={18} />
-          Configuración Global de Jornada de Reclutamiento (Fija y Hábil)
+          Jornada de Reclutamiento Vigente
         </h3>
-
-        <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-          {/* Selector de días laborables */}
-          <div className="md:col-span-2 space-y-2">
-            <label className="text-[10px] font-bold text-slate-500 uppercase">Días Laborales:</label>
-            <div className="flex flex-wrap gap-1.5">
-              {DAYS_OF_WEEK.map(day => {
-                const active = workDays.includes(day.value);
-                return (
-                  <button
-                    type="button"
-                    key={day.value}
-                    onClick={() => handleDayToggle(day.value)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
-                      active
-                        ? 'bg-orange-500 text-slate-950 border-orange-600'
-                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200'
-                    }`}
-                  >
-                    {day.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Horario inicio y fin */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Horario Inicio:</label>
-              <input
-                type="time"
-                value={startTime}
-                onChange={e => setStartTime(e.target.value)}
-                className="w-full border border-slate-200 rounded-lg p-2 text-xs bg-slate-50 font-medium"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Horario Fin:</label>
-              <input
-                type="time"
-                value={endTime}
-                onChange={e => setEndTime(e.target.value)}
-                className="w-full border border-slate-200 rounded-lg p-2 text-xs bg-slate-50 font-medium"
-              />
-            </div>
-          </div>
-
-          {/* Guardado */}
-          <div>
-            <button
-              type="submit"
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition"
+        <p className="text-[11px] text-slate-500">
+          Días y horario oficiales usados para calcular cobertura. Se edita desde
+          <span className="font-semibold"> Administración → Horario laboral</span>.
+        </p>
+        <div className="flex flex-wrap gap-1.5 mt-4">
+          {DAYS_OF_WEEK.map(day => (
+            <span
+              key={day.value}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+                workDays.includes(day.value)
+                  ? 'bg-orange-500 text-slate-950 border-orange-600'
+                  : 'bg-slate-50 text-slate-400 border-slate-200'
+              }`}
             >
-              {isSaved ? <Check size={16} className="text-green-400" /> : <Save size={16} />}
-              {isSaved ? 'Guardado con éxito' : 'Guardar Jornada'}
-            </button>
-          </div>
-        </form>
+              {day.label}
+            </span>
+          ))}
+          <span className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-slate-900 text-white border-slate-900">
+            {startTime} – {endTime}
+          </span>
+        </div>
       </div>
 
       {/* KPI Cards de Cobertura */}

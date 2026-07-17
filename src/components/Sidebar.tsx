@@ -12,6 +12,7 @@ import {
   Megaphone,
   CalendarDays,
   Database,
+  Settings,
   Truck
 } from 'lucide-react';
 
@@ -30,6 +31,7 @@ export default function Sidebar({ activeTab, setActiveTab, leadsCount }: Sidebar
     { id: 'campaigns', name: 'Rendimiento Campañas', icon: Megaphone },
     { id: 'coverage', name: 'Cobertura y Horarios', icon: CalendarDays },
     { id: 'data', name: 'Cargar Datos', icon: Database },
+    { id: 'admin', name: 'Administración', icon: Settings },
   ];
 
   return (
