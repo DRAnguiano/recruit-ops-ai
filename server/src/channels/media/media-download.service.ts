@@ -3,7 +3,12 @@ import { eq } from 'drizzle-orm';
 import { DB, Database } from '../../database/database.module';
 import { messages, MessageMedia } from '../../database/schema';
 import { DomainEventsService } from '../../events/domain-events.service';
-import { MediaDownloader, TelegramMediaDownloader, WhatsAppMediaDownloader } from './media-downloaders';
+import {
+  MediaDownloader,
+  MetaCdnMediaDownloader,
+  TelegramMediaDownloader,
+  WhatsAppMediaDownloader,
+} from './media-downloaders';
 import { MEDIA_STORAGE, MediaStorage } from './media-storage';
 
 const EXTENSION_BY_MIME: Record<string, string> = {
@@ -33,9 +38,13 @@ export class MediaDownloadService {
     whatsapp: WhatsAppMediaDownloader,
     telegram: TelegramMediaDownloader,
   ) {
+    // Messenger/IG comparten el downloader de CDN; son sin estado, una
+    // instancia por canal basta (no necesitan DI).
     this.downloaders = new Map<string, MediaDownloader>([
       [whatsapp.channel, whatsapp],
       [telegram.channel, telegram],
+      ['messenger', new MetaCdnMediaDownloader('messenger')],
+      ['instagram', new MetaCdnMediaDownloader('instagram')],
     ]);
   }
 
@@ -58,8 +67,12 @@ export class MediaDownloadService {
     }
 
     const mimeType = media.mimeType ?? downloaded.mimeType;
+    // En Messenger/IG el externalId es una URL: jamás sirve como filename.
+    const fallbackBase = media.externalId.startsWith('http') ? 'media' : media.externalId;
     const filename =
-      media.filename ?? `${media.externalId}${EXTENSION_BY_MIME[mimeType ?? ''] ?? '.bin'}`;
+      media.filename ??
+      downloaded.filename ??
+      `${fallbackBase}${EXTENSION_BY_MIME[mimeType ?? ''] ?? '.bin'}`;
     const storageKey = `${message.channel}/${messageId}/${filename}`;
     const { sizeBytes } = await this.storage.save(storageKey, downloaded.data);
 
