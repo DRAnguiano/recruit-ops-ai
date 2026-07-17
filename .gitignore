@@ -9,3 +9,4 @@ coverage/
 .claude/settings.local.json
 storage/
 server/storage/
+server/media-storage/
