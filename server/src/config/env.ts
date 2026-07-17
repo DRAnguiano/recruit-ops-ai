@@ -17,6 +17,13 @@ const envSchema = z.object({
   WHATSAPP_PHONE_NUMBER_ID: z.string().min(1).optional(),
   TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
   MEDIA_STORAGE_DIR: z.string().min(1).default('./storage/media'),
+  // Bot gateway (FastAPI externo): sin estos dos, el gateway queda
+  // deshabilitado — no se notifica al bot y /bot/v1/actions responde 403.
+  BOT_WEBHOOK_URL: z.string().url().optional(),
+  BOT_SHARED_SECRET: z.string().min(16).optional(),
+  // Base pública del backend para URLs absolutas hacia servicios externos
+  // (ej. mediaUrl del bot). Default: localhost con el puerto local.
+  PUBLIC_BASE_URL: z.string().url().optional(),
   // Bases de API con defaults oficiales; configurables para tests/proxies.
   GRAPH_API_BASE_URL: z.string().url().default('https://graph.facebook.com/v20.0'),
   TELEGRAM_API_BASE_URL: z.string().url().default('https://api.telegram.org'),
