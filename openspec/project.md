@@ -212,7 +212,10 @@ En orden de dependencia (cada uno atómico, ~12-15 tareas máx.):
 10b. `add-catalog-admin-ui` — vista de administración en la SPA para editar todos los
     catálogos, settings y metas por periodo ✅ (archivado 2026-07-17)
 10c. `add-channel-credentials` — credenciales por canal en DB cifradas con llave
-    maestra de env (multi-página/multi-número), reemplazando las env por canal
+    maestra de env, reemplazando las env por canal (una cuenta activa por canal)
+    ✅ (archivado 2026-07-17)
+10c-2. `add-multi-account-routing` — múltiples cuentas por canal y ruteo del entrante
+    a la cuenta que lo recibió (multi-página/multi-número); split acordado desde 10c
 11. `add-custom-fields` — diccionario de campos personalizados para leads/personas
     (tipo, opciones, requerido), captura desde UI; precursor del score auditable
 12. *(F3)* `add-campaign-management`, `add-scoring`, `add-documents`, `add-followups`

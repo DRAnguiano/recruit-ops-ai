@@ -9,7 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { loadEnv } from '../config/env';
+import { ChannelCredentialsService } from './credentials/channel-credentials.service';
 import { InstagramAdapter, MessengerAdapter } from './adapters/meta-messaging.adapter';
 import { TelegramAdapter } from './adapters/telegram.adapter';
 import { WhatsAppAdapter } from './adapters/whatsapp.adapter';
@@ -37,16 +37,17 @@ export class WebhooksController {
     private readonly messengerAdapter: MessengerAdapter,
     private readonly instagramAdapter: InstagramAdapter,
     private readonly queues: ChannelQueuesService,
+    private readonly credentials: ChannelCredentialsService,
   ) {}
 
   /** Handshake de verificación de Meta al registrar el webhook. */
   @Get('meta')
-  verifyMeta(
+  async verifyMeta(
     @Query('hub.mode') mode?: string,
     @Query('hub.verify_token') verifyToken?: string,
     @Query('hub.challenge') challenge?: string,
-  ): string {
-    const expected = loadEnv().META_VERIFY_TOKEN;
+  ): Promise<string> {
+    const expected = (await this.credentials.metaApp())?.verify_token;
     if (!expected || mode !== 'subscribe' || verifyToken !== expected || !challenge) {
       throw new ForbiddenException();
     }

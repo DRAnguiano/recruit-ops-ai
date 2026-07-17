@@ -346,6 +346,32 @@ export const appSettings = pgTable('app_settings', {
 });
 
 /**
+ * Credenciales de canal cifradas (channel-credentials): los secretos por canal
+ * salen de env a esta tabla. `secretsEncrypted` es base64(iv||tag||ciphertext)
+ * del JSON de secretos, cifrado con AES-256-GCM y la llave maestra de env. El
+ * índice único parcial impone una sola credencial activa por `kind` (el ruteo
+ * multi-cuenta lo relaja en add-multi-account-routing).
+ */
+export const channelCredentials = pgTable(
+  'channel_credentials',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** meta_app | whatsapp | meta_page | telegram */
+    kind: text('kind').notNull(),
+    label: text('label').notNull(),
+    active: boolean('active').notNull().default(true),
+    /** base64(iv||authTag||ciphertext) del JSON de secretos; nunca en texto plano. */
+    secretsEncrypted: text('secrets_encrypted').notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('channel_credentials_active_kind')
+      .on(t.kind)
+      .where(sql`${t.active}`),
+  ],
+);
+
+/**
  * Event log append-only: única fuente de métricas y auditoría.
  * UPDATE/DELETE son rechazados por trigger (migración custom).
  */

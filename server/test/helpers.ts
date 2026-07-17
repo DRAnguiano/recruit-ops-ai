@@ -13,6 +13,12 @@ const BASE_URL = process.env.DATABASE_URL ?? 'postgres://crm:crm@localhost:5432/
 
 export const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 
+/**
+ * Llave maestra fija para tests (channel-credentials): habilita el almacén
+ * cifrado y el seed de migración desde las env legacy que las suites definen.
+ */
+export const TEST_CREDENTIALS_KEY = Buffer.alloc(32, 42).toString('base64');
+
 /** Espera hasta que `check` devuelva truthy (poll de 100 ms) o agota el timeout. */
 export async function waitFor<T>(
   check: () => Promise<T | null | undefined | false>,
@@ -49,6 +55,7 @@ export async function bootTestApp(env: Record<string, string> = {}): Promise<Tes
   process.env.REDIS_URL = REDIS_URL;
   process.env.NODE_ENV = 'test';
   process.env.QUEUE_SUFFIX = `-t${randomBytes(4).toString('hex')}`;
+  process.env.CHANNEL_CREDENTIALS_KEY = TEST_CREDENTIALS_KEY;
   Object.assign(process.env, env);
   resetEnvCache();
 

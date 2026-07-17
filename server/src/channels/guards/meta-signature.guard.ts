@@ -2,17 +2,20 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
-import { loadEnv } from '../../config/env';
+import { ChannelCredentialsService } from '../credentials/channel-credentials.service';
 
 /**
- * Valida X-Hub-Signature-256: HMAC-SHA256 del cuerpo crudo con META_APP_SECRET.
- * Sin secret configurado, o con firma ausente/incorrecta → 403 (Nest convierte
- * el `return false` en ForbiddenException genérica, sin filtrar detalles).
+ * Valida X-Hub-Signature-256: HMAC-SHA256 del cuerpo crudo con el app_secret de
+ * la credencial `meta_app` activa (channel-credentials). Sin credencial, o con
+ * firma ausente/incorrecta → 403 (Nest convierte el `return false` en
+ * ForbiddenException genérica, sin filtrar detalles).
  */
 @Injectable()
 export class MetaSignatureGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
-    const secret = loadEnv().META_APP_SECRET;
+  constructor(private readonly credentials: ChannelCredentialsService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const secret = (await this.credentials.metaApp())?.app_secret;
     if (!secret) return false;
 
     const request = context.switchToHttp().getRequest<RawBodyRequest<Request>>();

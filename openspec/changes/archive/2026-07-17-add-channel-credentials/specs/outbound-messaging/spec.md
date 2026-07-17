@@ -1,6 +1,6 @@
-# outbound-messaging
+# outbound-messaging (delta)
 
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Persist-then-send outbound pipeline
 `POST /api/conversations/:id/messages` SHALL validate (open conversation, supported and
@@ -49,13 +49,3 @@ than WhatsApp respond 409 `TEMPLATES_NOT_SUPPORTED`.
 #### Scenario: Template on non-WhatsApp channel rejected
 - **WHEN** a template send targets a messenger or instagram conversation
 - **THEN** the API responds 409 `TEMPLATES_NOT_SUPPORTED` and nothing is persisted
-
-### Requirement: Outbound messages visible in inbox immediately
-Outbound messages SHALL appear in `GET /api/conversations/:id/messages` with their
-`delivery` state, update the conversation's `lastMessageAt`, and be broadcast over the
-existing WebSocket as domain events.
-
-#### Scenario: Sent message updates conversation activity
-- **WHEN** an outbound message is persisted
-- **THEN** the conversation's `lastMessageAt` reflects it and the message lists with
-  `direction='outbound'` and its delivery status

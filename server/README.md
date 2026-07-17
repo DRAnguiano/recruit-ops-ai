@@ -59,9 +59,13 @@ test/          Tests de humo de la fundación + canales + API
 
 | Ruta | Autenticidad | Notas |
 |---|---|---|
-| `GET /webhooks/meta` | `hub.verify_token` = `META_VERIFY_TOKEN` | Handshake de alta del webhook en Meta |
-| `POST /webhooks/meta` | HMAC `X-Hub-Signature-256` con `META_APP_SECRET` (cuerpo crudo) | WhatsApp (`whatsapp_business_account`), Messenger (`page`) e Instagram (`instagram`) |
-| `POST /webhooks/telegram` | Header `X-Telegram-Bot-Api-Secret-Token` = `TELEGRAM_WEBHOOK_SECRET` | Registrar con `setWebhook` + `secret_token` |
+| `GET /webhooks/meta` | `hub.verify_token` = `verify_token` de la credencial `meta_app` activa | Handshake de alta del webhook en Meta |
+| `POST /webhooks/meta` | HMAC `X-Hub-Signature-256` con el `app_secret` de la credencial `meta_app` activa (cuerpo crudo) | WhatsApp (`whatsapp_business_account`), Messenger (`page`) e Instagram (`instagram`) |
+| `POST /webhooks/telegram` | Header `X-Telegram-Bot-Api-Secret-Token` = `webhook_secret` de la credencial `telegram` activa | Registrar con `setWebhook` + `secret_token` |
+
+Las credenciales ya no son variables de entorno: viven cifradas en la DB (ver
+**Credenciales de canal** abajo). Sin credencial activa del tipo correspondiente, el
+webhook responde 403.
 
 Reglas: sin secret configurado el endpoint responde 403; autenticado, SIEMPRE responde 200
 aunque el payload no traiga mensajes procesables (edits, reacciones) — Meta desactiva
@@ -77,10 +81,40 @@ El ACK no depende de Postgres: con la DB caída, los mensajes esperan en Redis.
 
 Mensajes de **audio/voz/imagen/documento/video** se persisten con `messages.type` y
 `messages.media` (estado `pending → stored | failed`). La cola `channels.media` descarga
-el binario (WhatsApp: Graph API con `WHATSAPP_ACCESS_TOKEN`; Telegram: `getFile` con
-`TELEGRAM_BOT_TOKEN`) y lo guarda vía `MediaStorage` (filesystem en `MEDIA_STORAGE_DIR`;
-S3/MinIO cuando se decida despliegue). Sin token, la media queda `pending` sin romper
-nada. Stickers/reacciones/ubicaciones se ACKean sin persistir.
+el binario (WhatsApp: Graph API con el `access_token` de la credencial `whatsapp`;
+Telegram: `getFile` con el `bot_token` de la credencial `telegram`) y lo guarda vía
+`MediaStorage` (filesystem en `MEDIA_STORAGE_DIR`; S3/MinIO cuando se decida despliegue).
+Sin credencial activa, la media queda `pending` sin romper nada.
+Stickers/reacciones/ubicaciones se ACKean sin persistir.
+
+## Credenciales de canal (cifradas en DB)
+
+Los secretos por canal (app secret / verify token de Meta, tokens de WhatsApp, páginas de
+Meta, bots de Telegram) **ya no viven en env**: se guardan cifrados (AES-256-GCM) en la
+tabla `channel_credentials` y se administran por API. Solo la **llave maestra** vive en
+env: `CHANNEL_CREDENTIALS_KEY` (base64 de 32 bytes, `openssl rand -base64 32`). Sin llave,
+todos los canales quedan deshabilitados (webhooks 403, envío `CHANNEL_NOT_CONFIGURED`,
+media `pending`) sin impedir el arranque.
+
+Tipos de credencial (`kind`) y sus secretos, uno activo por tipo en este change:
+
+| `kind` | Secretos | Usa |
+|---|---|---|
+| `meta_app` | `app_secret`, `verify_token` | Firma y handshake del webhook de Meta (compartido WhatsApp/Messenger/Instagram) |
+| `whatsapp` | `access_token`, `phone_number_id` | Descarga de media y envío por Cloud API |
+| `meta_page` | `page_id`, `page_access_token` | Envío por Send API (Messenger/Instagram) |
+| `telegram` | `bot_token`, `webhook_secret` | Descarga de media, envío y verificación del webhook |
+
+**API** (`/api/channel-credentials`): `GET` lista solo metadatos (`kind`, `label`,
+`active`, `configured`) — **nunca** los secretos; `POST` crea (secretos validados por
+`kind`, se cifran); `PATCH` edita `label`/`active` y/o rota los secretos; `DELETE` borra.
+Toda mutación audita en `domain_events` sin el secreto.
+
+**Migración desde env**: al primer arranque, si `CHANNEL_CREDENTIALS_KEY` está puesta y
+aún tienes las variables legacy de canal en tu entorno, el seed las importa una vez al
+almacén (solo los `kind` con su juego completo de secretos). Después borra esas líneas del
+`.env`. El respaldo de `CHANNEL_CREDENTIALS_KEY` es crítico: sin ella los secretos son
+irrecuperables (se re-capturan por la API).
 
 ## Messenger e Instagram
 
@@ -93,9 +127,9 @@ adjuntos llegan como URL firmada de CDN y se descargan de inmediato por la cola 
 (sin token; si la firma expiró quedan `failed`). Echoes y eventos delivery/read se ACKean
 sin persistir.
 
-Para **responder** se usa la Send API con `META_PAGE_ID` + `META_PAGE_ACCESS_TOKEN`
-(la cuenta IG profesional conectada a la página; mismo token con permiso
-`instagram_manage_messages`). Solo texto dentro de la ventana de 24 h; estos canales no
+Para **responder** se usa la Send API con la credencial `meta_page` activa (`page_id` +
+`page_access_token`; la cuenta IG profesional conectada a la página, mismo token con
+permiso `instagram_manage_messages`). Solo texto dentro de la ventana de 24 h; estos canales no
 tienen plantillas (409 `TEMPLATES_NOT_SUPPORTED`).
 
 ## Envío saliente (ventana 24 h y plantillas)
@@ -119,8 +153,9 @@ renderiza el cuerpo para el historial y arma el payload `template` de la Cloud A
 **Estados de entrega**: los webhooks `statuses` de WhatsApp actualizan
 `messages.delivery` (`queued → sent → delivered → read`, o `failed` con el error de Meta)
 con avance monotónico e idempotente, emiten `message.delivery_updated` y llegan al inbox
-en vivo por el WS. Env necesaria para enviar por WhatsApp: `WHATSAPP_ACCESS_TOKEN` +
-`WHATSAPP_PHONE_NUMBER_ID`; sin ellos el endpoint responde 409 `CHANNEL_NOT_CONFIGURED`.
+en vivo por el WS. Enviar por WhatsApp requiere la credencial `whatsapp` activa
+(`access_token` + `phone_number_id`); sin ella el endpoint responde 409
+`CHANNEL_NOT_CONFIGURED`.
 
 ## Sync de campañas (Meta Marketing API, read-only)
 

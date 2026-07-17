@@ -15,7 +15,13 @@ import { ChannelQueuesService } from '../src/channels/channel-queues.service';
 import { resetEnvCache } from '../src/config/env';
 import { configureApp } from '../src/setup-app';
 import * as schema from '../src/database/schema';
-import { createEphemeralDatabase, EphemeralDatabase, REDIS_URL, waitFor } from './helpers';
+import {
+  createEphemeralDatabase,
+  EphemeralDatabase,
+  REDIS_URL,
+  TEST_CREDENTIALS_KEY,
+  waitFor,
+} from './helpers';
 
 const META_APP_SECRET = 'media-secret';
 const AUDIO_BYTES = Buffer.from('OGG-FAKE-AUDIO-CONTENT');
@@ -129,6 +135,10 @@ describe('media end-to-end (media-ingestion + media-download + queued-ingestion)
     process.env.META_APP_SECRET = META_APP_SECRET;
     process.env.META_VERIFY_TOKEN = 'x';
     process.env.WHATSAPP_ACCESS_TOKEN = 'wa-token';
+    // El seed exige el juego completo por kind (aunque la descarga de media solo
+    // use el token): sin phone_number_id no se crea la credencial whatsapp.
+    process.env.WHATSAPP_PHONE_NUMBER_ID = 'wa-phone';
+    process.env.CHANNEL_CREDENTIALS_KEY = TEST_CREDENTIALS_KEY;
     process.env.GRAPH_API_BASE_URL = graph.baseUrl;
     process.env.MEDIA_STORAGE_DIR = storageDir;
     process.env.QUEUE_SUFFIX = `-md${Date.now().toString(36)}`;

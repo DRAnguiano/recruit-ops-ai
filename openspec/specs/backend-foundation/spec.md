@@ -48,31 +48,39 @@ development with a single command.
 
 
 
-### Requirement: Optional channel configuration variables
-The environment schema SHALL accept optional channel variables (`META_APP_SECRET`,
-`META_VERIFY_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`). Their absence MUST NOT prevent startup;
-it only disables the corresponding webhook endpoint (403).
+### Requirement: Channel credentials master key
+The environment schema SHALL accept an optional `CHANNEL_CREDENTIALS_KEY` — a base64
+string decoding to exactly 32 bytes — used as the AES-256-GCM master key for the encrypted
+channel credential store. Its absence MUST NOT prevent startup; it only disables all
+channels (webhooks respond 403, sends respond `CHANNEL_NOT_CONFIGURED`, media stays
+`pending`).
 
-#### Scenario: Startup without channel secrets
-- **WHEN** the backend starts with only the base variables configured
-- **THEN** it boots normally and channel webhooks respond 403 until configured
+#### Scenario: Startup without master key
+- **WHEN** the backend starts without `CHANNEL_CREDENTIALS_KEY`
+- **THEN** it boots normally and every channel behaves as not configured
 
-#### Scenario: Channel variables documented
-- **WHEN** the channel variables are added to the zod schema
-- **THEN** they appear in `.env.example` with explanatory comments
+#### Scenario: Invalid key rejected
+- **WHEN** `CHANNEL_CREDENTIALS_KEY` is present but does not decode to 32 bytes
+- **THEN** validation fails at startup with a readable message
+
+#### Scenario: Variable documented
+- **WHEN** `CHANNEL_CREDENTIALS_KEY` is added to the zod schema
+- **THEN** it appears in `.env.example` with an explanatory comment and a generation hint
 
 ### Requirement: Media and API-base configuration variables
-The environment schema SHALL accept optional `WHATSAPP_ACCESS_TOKEN`,
-`TELEGRAM_BOT_TOKEN` and `MEDIA_STORAGE_DIR` (default `./storage/media`), plus
-`GRAPH_API_BASE_URL` and `TELEGRAM_API_BASE_URL` with the official defaults. Their
-absence MUST NOT prevent startup.
+The environment schema SHALL accept optional `MEDIA_STORAGE_DIR` (default
+`./storage/media`), plus `GRAPH_API_BASE_URL` and `TELEGRAM_API_BASE_URL` with the
+official defaults. Channel download tokens (`WHATSAPP_ACCESS_TOKEN`, `TELEGRAM_BOT_TOKEN`)
+are no longer environment variables — they are resolved from the encrypted credential
+store. The absence of these variables MUST NOT prevent startup.
 
-#### Scenario: Startup without media tokens
-- **WHEN** the backend starts without media tokens
-- **THEN** it boots normally and media downloads remain `pending`
+#### Scenario: Startup without media configuration
+- **WHEN** the backend starts without media variables
+- **THEN** it boots normally using the default storage dir and official API base URLs, and
+  media downloads remain `pending` until a channel credential resolves
 
 #### Scenario: Variables documented
-- **WHEN** the media variables are added to the zod schema
+- **WHEN** the media/API-base variables are in the zod schema
 - **THEN** they appear in `.env.example` with explanatory comments
 
 ### Requirement: CORS configuration variable

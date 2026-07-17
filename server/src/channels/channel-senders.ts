@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DomainError } from '../common/domain-error';
 import { loadEnv } from '../config/env';
 import { ChannelName } from './channel-adapter';
+import { ChannelCredentialsService } from './credentials/channel-credentials.service';
 
 /** Contenido saliente ya validado; `body` siempre es el texto legible final. */
 export interface OutboundContent {
@@ -13,12 +14,13 @@ export interface OutboundContent {
 /**
  * Envío saliente por canal (outbound-messaging spec), simétrico a
  * MediaDownloader. `recipient` es el id externo de la channel identity de la
- * persona (wa_id / chat_id). Sin credenciales → isConfigured() false y el
+ * persona (wa_id / chat_id). Las credenciales se resuelven del almacén cifrado
+ * (channel-credentials); sin credencial activa → isConfigured() false y el
  * endpoint responde CHANNEL_NOT_CONFIGURED antes de persistir nada.
  */
 export interface ChannelSender {
   readonly channel: ChannelName;
-  isConfigured(): boolean;
+  isConfigured(): Promise<boolean>;
   send(recipient: string, content: OutboundContent): Promise<{ externalMessageId: string }>;
 }
 
@@ -26,14 +28,23 @@ function sendFailed(channel: string, detail: string): DomainError {
   return new DomainError('SEND_FAILED', `Envío por ${channel} falló: ${detail}`);
 }
 
+function notConfigured(channel: string): DomainError {
+  return new DomainError(
+    'CHANNEL_NOT_CONFIGURED',
+    `Faltan credenciales activas para enviar por ${channel}`,
+    409,
+  );
+}
+
 /** WhatsApp Cloud API: POST {base}/{phoneNumberId}/messages (texto o template). */
 @Injectable()
 export class WhatsAppSender implements ChannelSender {
   readonly channel = 'whatsapp' as const;
 
-  isConfigured(): boolean {
-    const env = loadEnv();
-    return Boolean(env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID);
+  constructor(private readonly credentials: ChannelCredentialsService) {}
+
+  async isConfigured(): Promise<boolean> {
+    return (await this.credentials.whatsapp()) !== null;
   }
 
   async send(
@@ -41,6 +52,8 @@ export class WhatsAppSender implements ChannelSender {
     content: OutboundContent,
   ): Promise<{ externalMessageId: string }> {
     const env = loadEnv();
+    const creds = await this.credentials.whatsapp();
+    if (!creds) throw notConfigured('whatsapp');
     const to = recipient.replace(/^\+/, '');
 
     const payload =
@@ -70,11 +83,11 @@ export class WhatsAppSender implements ChannelSender {
         : { messaging_product: 'whatsapp', to, type: 'text', text: { body: content.body } };
 
     const response = await fetch(
-      `${env.GRAPH_API_BASE_URL}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      `${env.GRAPH_API_BASE_URL}/${creds.phone_number_id}/messages`,
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${env.WHATSAPP_ACCESS_TOKEN}`,
+          Authorization: `Bearer ${creds.access_token}`,
           'content-type': 'application/json',
         },
         body: JSON.stringify(payload),
@@ -95,8 +108,10 @@ export class WhatsAppSender implements ChannelSender {
 export class TelegramSender implements ChannelSender {
   readonly channel = 'telegram' as const;
 
-  isConfigured(): boolean {
-    return Boolean(loadEnv().TELEGRAM_BOT_TOKEN);
+  constructor(private readonly credentials: ChannelCredentialsService) {}
+
+  async isConfigured(): Promise<boolean> {
+    return (await this.credentials.telegram()) !== null;
   }
 
   async send(
@@ -104,8 +119,10 @@ export class TelegramSender implements ChannelSender {
     content: OutboundContent,
   ): Promise<{ externalMessageId: string }> {
     const env = loadEnv();
+    const creds = await this.credentials.telegram();
+    if (!creds) throw notConfigured('telegram');
     const response = await fetch(
-      `${env.TELEGRAM_API_BASE_URL}/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+      `${env.TELEGRAM_API_BASE_URL}/bot${creds.bot_token}/sendMessage`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -133,9 +150,10 @@ export class TelegramSender implements ChannelSender {
 abstract class MetaSendApiSender implements ChannelSender {
   abstract readonly channel: ChannelName;
 
-  isConfigured(): boolean {
-    const env = loadEnv();
-    return Boolean(env.META_PAGE_ID && env.META_PAGE_ACCESS_TOKEN);
+  constructor(protected readonly credentials: ChannelCredentialsService) {}
+
+  async isConfigured(): Promise<boolean> {
+    return (await this.credentials.metaPage()) !== null;
   }
 
   async send(
@@ -143,8 +161,10 @@ abstract class MetaSendApiSender implements ChannelSender {
     content: OutboundContent,
   ): Promise<{ externalMessageId: string }> {
     const env = loadEnv();
+    const creds = await this.credentials.metaPage();
+    if (!creds) throw notConfigured(this.channel);
     const response = await fetch(
-      `${env.GRAPH_API_BASE_URL}/${env.META_PAGE_ID}/messages?access_token=${env.META_PAGE_ACCESS_TOKEN}`,
+      `${env.GRAPH_API_BASE_URL}/${creds.page_id}/messages?access_token=${creds.page_access_token}`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -172,9 +192,15 @@ abstract class MetaSendApiSender implements ChannelSender {
 @Injectable()
 export class MessengerSender extends MetaSendApiSender {
   readonly channel = 'messenger' as const;
+  constructor(credentials: ChannelCredentialsService) {
+    super(credentials);
+  }
 }
 
 @Injectable()
 export class InstagramSender extends MetaSendApiSender {
   readonly channel = 'instagram' as const;
+  constructor(credentials: ChannelCredentialsService) {
+    super(credentials);
+  }
 }

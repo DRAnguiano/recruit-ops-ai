@@ -237,9 +237,18 @@ describe('Messenger end-to-end (meta-messaging-channels)', () => {
     });
   });
 
-  it('sin env de página → 409 CHANNEL_NOT_CONFIGURED', async () => {
-    delete process.env.META_PAGE_ACCESS_TOKEN;
-    resetEnvCache();
+  it('sin credencial de página → 409 CHANNEL_NOT_CONFIGURED', async () => {
+    // La credencial de página vive en el almacén cifrado: desactivarla (vía la
+    // API, que invalida el cache) deja Messenger/Instagram "no configurado".
+    const creds = (await (
+      await fetch(`${t.baseUrl}/api/channel-credentials`)
+    ).json()) as { id: string; kind: string }[];
+    const page = creds.find((c) => c.kind === 'meta_page')!;
+    await fetch(`${t.baseUrl}/api/channel-credentials/${page.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ active: false }),
+    });
     try {
       const conversation = (await t.db.query.conversations.findFirst())!;
       // Reabrir ventana para que el rechazo sea por credenciales, no por ventana.
@@ -255,8 +264,11 @@ describe('Messenger end-to-end (meta-messaging-channels)', () => {
       expect(res.status).toBe(409);
       expect(((await res.json()) as { code: string }).code).toBe('CHANNEL_NOT_CONFIGURED');
     } finally {
-      process.env.META_PAGE_ACCESS_TOKEN = 'page-token';
-      resetEnvCache();
+      await fetch(`${t.baseUrl}/api/channel-credentials/${page.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ active: true }),
+      });
     }
   });
 });

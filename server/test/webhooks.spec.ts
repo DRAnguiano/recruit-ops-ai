@@ -10,7 +10,13 @@ import { resetEnvCache } from '../src/config/env';
 import { configureApp } from '../src/setup-app';
 import * as schema from '../src/database/schema';
 import { telegramMessageUpdate, whatsappStatusPayload, whatsappTextPayload } from './adapters.spec';
-import { createEphemeralDatabase, EphemeralDatabase, REDIS_URL, waitFor } from './helpers';
+import {
+  createEphemeralDatabase,
+  EphemeralDatabase,
+  REDIS_URL,
+  TEST_CREDENTIALS_KEY,
+  waitFor,
+} from './helpers';
 
 const META_APP_SECRET = 'test-app-secret';
 const META_VERIFY_TOKEN = 'test-verify-token';
@@ -35,6 +41,11 @@ describe('webhooks (channel-webhooks)', () => {
     process.env.META_APP_SECRET = META_APP_SECRET;
     process.env.META_VERIFY_TOKEN = META_VERIFY_TOKEN;
     process.env.TELEGRAM_WEBHOOK_SECRET = TELEGRAM_SECRET;
+    // El seed exige el juego completo por kind: sin bot_token no se crea la
+    // credencial telegram y el guard rechaza siempre.
+    process.env.TELEGRAM_BOT_TOKEN = 'wh-bot-token';
+    // El seed migra esas env legacy al almacén cifrado (channel-credentials).
+    process.env.CHANNEL_CREDENTIALS_KEY = TEST_CREDENTIALS_KEY;
     // Aísla las colas BullMQ de esta suite (Redis es compartido entre suites).
     process.env.QUEUE_SUFFIX = `-wh${Date.now().toString(36)}`;
     resetEnvCache();

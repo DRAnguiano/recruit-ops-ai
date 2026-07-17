@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DomainError } from '../../common/domain-error';
 import { loadEnv } from '../../config/env';
 import { ChannelName } from '../channel-adapter';
+import { ChannelCredentialsService } from '../credentials/channel-credentials.service';
 
 export interface DownloadedMedia {
   data: Buffer;
@@ -45,9 +46,11 @@ async function fetchBuffer(
 export class WhatsAppMediaDownloader implements MediaDownloader {
   readonly channel = 'whatsapp' as const;
 
+  constructor(private readonly credentials: ChannelCredentialsService) {}
+
   async download(externalId: string): Promise<DownloadedMedia | null> {
     const env = loadEnv();
-    const token = env.WHATSAPP_ACCESS_TOKEN;
+    const token = (await this.credentials.whatsapp())?.access_token;
     if (!token) return null;
 
     const headers = { Authorization: `Bearer ${token}` };
@@ -72,9 +75,11 @@ export class WhatsAppMediaDownloader implements MediaDownloader {
 export class TelegramMediaDownloader implements MediaDownloader {
   readonly channel = 'telegram' as const;
 
+  constructor(private readonly credentials: ChannelCredentialsService) {}
+
   async download(externalId: string): Promise<DownloadedMedia | null> {
     const env = loadEnv();
-    const token = env.TELEGRAM_BOT_TOKEN;
+    const token = (await this.credentials.telegram())?.bot_token;
     if (!token) return null;
 
     const base = env.TELEGRAM_API_BASE_URL;

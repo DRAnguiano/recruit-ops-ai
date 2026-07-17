@@ -57,6 +57,13 @@
       "when": 1784302283608,
       "tag": "0007_configurable-catalogs",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784388683608,
+      "tag": "0008_channel-credentials",
+      "breakpoints": true
     }
   ]
 }

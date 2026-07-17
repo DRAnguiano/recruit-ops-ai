@@ -5,21 +5,21 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3001),
   DATABASE_URL: z.string().url({ message: 'debe ser una URL postgres://' }),
   REDIS_URL: z.string().url({ message: 'debe ser una URL redis://' }),
-  // Canales (opcionales): su ausencia no impide arrancar, solo deshabilita
-  // el webhook correspondiente (responde 403 hasta configurarse).
-  META_APP_SECRET: z.string().min(1).optional(),
-  META_VERIFY_TOKEN: z.string().min(1).optional(),
-  TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
-  // Media: tokens para descargar binarios (sin ellos la media queda `pending`).
-  WHATSAPP_ACCESS_TOKEN: z.string().min(1).optional(),
-  // Envío saliente WhatsApp: id del número en la Cloud API. Sin él, enviar
-  // por WhatsApp responde CHANNEL_NOT_CONFIGURED (409).
-  WHATSAPP_PHONE_NUMBER_ID: z.string().min(1).optional(),
-  TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
-  // Messenger/Instagram (Send API): página de Facebook con la cuenta IG
-  // conectada. Sin ellos, esos canales ingieren pero no pueden enviar.
-  META_PAGE_ID: z.string().min(1).optional(),
-  META_PAGE_ACCESS_TOKEN: z.string().min(1).optional(),
+  // Llave maestra del almacén cifrado de credenciales de canal
+  // (channel-credentials): base64 que decodifica a exactamente 32 bytes
+  // (AES-256-GCM). Sin ella, TODOS los canales quedan deshabilitados (webhooks
+  // 403, envío CHANNEL_NOT_CONFIGURED, media pending) sin impedir el arranque.
+  // Los secretos por canal ya no viven en env: se administran cifrados en DB.
+  CHANNEL_CREDENTIALS_KEY: z
+    .string()
+    .refine((v) => {
+      try {
+        return Buffer.from(v, 'base64').length === 32;
+      } catch {
+        return false;
+      }
+    }, 'debe ser base64 de exactamente 32 bytes (openssl rand -base64 32)')
+    .optional(),
   MEDIA_STORAGE_DIR: z.string().min(1).default('./storage/media'),
   // Bot gateway (FastAPI externo): sin estos dos, el gateway queda
   // deshabilitado — no se notifica al bot y /bot/v1/actions responde 403.

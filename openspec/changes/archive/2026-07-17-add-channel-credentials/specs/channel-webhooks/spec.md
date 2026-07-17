@@ -1,6 +1,6 @@
-# channel-webhooks
+# channel-webhooks (delta)
 
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Meta webhook verification handshake
 The system SHALL respond to `GET /webhooks/meta` echoing `hub.challenge` when `hub.mode`
@@ -42,19 +42,3 @@ store; mismatches or the absence of an active credential MUST be rejected with 4
 #### Scenario: Missing secret token
 - **WHEN** the header is missing or wrong
 - **THEN** the API responds 403 and nothing is enqueued nor persisted
-
-### Requirement: Fast ACK policy
-Authenticated webhook requests SHALL be acknowledged with 200 even when the payload
-contains no processable messages (edits, reactions, unknown event types) or when it
-belongs to a channel not yet processed (Messenger, Instagram); unrecognized content MUST
-never produce a 5xx response. WhatsApp `statuses` entries are no longer discarded: they
-are enqueued as delivery updates (see delivery-status) while still being ACKed with 200.
-
-#### Scenario: Status-only payload
-- **WHEN** a valid Meta payload contains only delivery statuses
-- **THEN** the API responds 200, no message rows are created, and a delivery-update job is
-  enqueued
-
-#### Scenario: Messenger event before its change
-- **WHEN** a valid Meta payload for `page` (Messenger) arrives
-- **THEN** the API responds 200 without processing it

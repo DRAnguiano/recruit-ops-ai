@@ -94,6 +94,9 @@ describe('tiempo real por WebSocket (realtime-updates)', () => {
       META_APP_SECRET,
       META_VERIFY_TOKEN: 'x',
       WHATSAPP_ACCESS_TOKEN: 'wa-token',
+      // Juego completo para que el seed cree la credencial whatsapp (la
+      // descarga de media resuelve el token desde ella).
+      WHATSAPP_PHONE_NUMBER_ID: 'wa-phone',
       GRAPH_API_BASE_URL: graph.baseUrl,
       MEDIA_STORAGE_DIR: join(tmpdir(), `crm-rt-${Date.now().toString(36)}`),
     });

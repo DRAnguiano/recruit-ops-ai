@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { LeadsModule } from '../leads/leads.module';
+import { ChannelCredentialsModule } from './credentials/channel-credentials.module';
 import { InstagramAdapter, MessengerAdapter } from './adapters/meta-messaging.adapter';
 import { TelegramAdapter } from './adapters/telegram.adapter';
 import { WhatsAppAdapter } from './adapters/whatsapp.adapter';
@@ -18,7 +19,7 @@ import { OutboundService } from './outbound.service';
 import { WebhooksController } from './webhooks.controller';
 
 @Module({
-  imports: [LeadsModule],
+  imports: [LeadsModule, ChannelCredentialsModule],
   controllers: [WebhooksController],
   providers: [
     WhatsAppAdapter,

@@ -104,6 +104,9 @@ describe('envío saliente y delivery (outbound-messaging, whatsapp-window-policy
       WHATSAPP_PHONE_NUMBER_ID: PHONE_NUMBER_ID,
       GRAPH_API_BASE_URL: fake.baseUrl,
       TELEGRAM_BOT_TOKEN: 'tg-token',
+      // El seed exige el juego completo por kind: sin webhook_secret no se crea
+      // la credencial telegram y el sender queda "no configurado".
+      TELEGRAM_WEBHOOK_SECRET: 'tg-wh',
       TELEGRAM_API_BASE_URL: fake.baseUrl,
       OUTBOUND_JOB_ATTEMPTS: '2',
       OUTBOUND_JOB_BACKOFF_MS: '100',
@@ -285,9 +288,17 @@ describe('envío saliente y delivery (outbound-messaging, whatsapp-window-policy
   });
 
   it('canal sin credenciales → 409 CHANNEL_NOT_CONFIGURED sin persistir', async () => {
-    const saved = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    delete process.env.WHATSAPP_PHONE_NUMBER_ID;
-    resetEnvCache();
+    // Las credenciales viven en el almacén cifrado: desactivar la del canal
+    // (vía la API, que invalida el cache) es lo que lo deja "no configurado".
+    const creds = (await (
+      await fetch(`${t.baseUrl}/api/channel-credentials`)
+    ).json()) as { id: string; kind: string }[];
+    const wa = creds.find((c) => c.kind === 'whatsapp')!;
+    await fetch(`${t.baseUrl}/api/channel-credentials/${wa.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ active: false }),
+    });
     try {
       const before = await t.db.query.messages.findMany({
         where: eq(schema.messages.direction, 'outbound'),
@@ -303,8 +314,11 @@ describe('envío saliente y delivery (outbound-messaging, whatsapp-window-policy
       });
       expect(after.length).toBe(before.length);
     } finally {
-      process.env.WHATSAPP_PHONE_NUMBER_ID = saved;
-      resetEnvCache();
+      await fetch(`${t.baseUrl}/api/channel-credentials/${wa.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ active: true }),
+      });
     }
   });
 
