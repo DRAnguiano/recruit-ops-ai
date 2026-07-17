@@ -33,6 +33,17 @@ function startFakeGraphApi(): Promise<{ server: Server; baseUrl: string }> {
       res.end(AUDIO_BYTES);
       return;
     }
+    // CDN falso de Messenger/IG: URL firmada válida o expirada.
+    if (url.startsWith('/cdn/expired')) {
+      res.writeHead(403);
+      res.end('URL signature expired');
+      return;
+    }
+    if (url.startsWith('/cdn/')) {
+      res.writeHead(200, { 'content-type': 'audio/mpeg' });
+      res.end(AUDIO_BYTES);
+      return;
+    }
     if (url.includes('FAIL')) {
       res.writeHead(500);
       res.end('boom');
@@ -73,6 +84,24 @@ function audioWebhookPayload(wamid: string, mediaId: string): string {
                 },
               ],
             },
+          },
+        ],
+      },
+    ],
+  });
+}
+
+function messengerAudioPayload(mid: string, cdnUrl: string): string {
+  return JSON.stringify({
+    object: 'page',
+    entry: [
+      {
+        id: '101',
+        messaging: [
+          {
+            sender: { id: 'PSID-MEDIA-1' },
+            timestamp: 1752602400000,
+            message: { mid, attachments: [{ type: 'audio', payload: { url: cdnUrl } }] },
           },
         ],
       },
@@ -182,6 +211,52 @@ describe('media end-to-end (media-ingestion + media-download + queued-ingestion)
       return row?.media?.status === 'failed' ? row : null;
     });
     expect(message.media?.error).toContain('HTTP 500 al resolver media');
+  });
+
+  it('adjunto de Messenger → binario descargado del CDN sin token, filename sano', async () => {
+    const body = messengerAudioPayload('m_CDN-OK-1', `${graph.baseUrl}/cdn/voicemsg.mp3?sig=ok`);
+    const res = await fetch(`${baseUrl}/webhooks/meta`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-hub-signature-256': metaSignature(body) },
+      body,
+    });
+    expect(res.status).toBe(200);
+
+    const message = await waitFor(async () => {
+      const row = await db.query.messages.findFirst({
+        where: eq(schema.messages.externalMessageId, 'm_CDN-OK-1'),
+      });
+      return row?.media?.status === 'stored' ? row : null;
+    });
+
+    expect(message.channel).toBe('messenger');
+    expect(message.type).toBe('audio');
+    expect(message.media).toMatchObject({
+      status: 'stored',
+      mimeType: 'audio/mpeg',
+      filename: 'voicemsg.mp3',
+      sizeBytes: AUDIO_BYTES.byteLength,
+    });
+    // El storage key jamás contiene la URL del CDN.
+    expect(message.media?.storageKey).toBe(`messenger/${message.id}/voicemsg.mp3`);
+    expect(readFileSync(join(storageDir, message.media!.storageKey!))).toEqual(AUDIO_BYTES);
+  });
+
+  it('URL de CDN expirada → media failed tras reintentos', async () => {
+    const body = messengerAudioPayload('m_CDN-EXP-1', `${graph.baseUrl}/cdn/expired?sig=old`);
+    await fetch(`${baseUrl}/webhooks/meta`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-hub-signature-256': metaSignature(body) },
+      body,
+    });
+
+    const message = await waitFor(async () => {
+      const row = await db.query.messages.findFirst({
+        where: eq(schema.messages.externalMessageId, 'm_CDN-EXP-1'),
+      });
+      return row?.media?.status === 'failed' ? row : null;
+    });
+    expect(message.media?.error).toContain('HTTP 403');
   });
 
   it('sin token del canal la media queda pending (sin crash)', async () => {

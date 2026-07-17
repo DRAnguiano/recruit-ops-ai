@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import {
+  InstagramAdapter,
+  MessengerAdapter,
+} from '../src/channels/adapters/meta-messaging.adapter';
 import { TelegramAdapter } from '../src/channels/adapters/telegram.adapter';
 import { WhatsAppAdapter } from '../src/channels/adapters/whatsapp.adapter';
 
@@ -41,6 +45,24 @@ export const whatsappStatusPayload = {
             messaging_product: 'whatsapp',
             statuses: [{ id: 'wamid.X', status: 'delivered', recipient_id: '5218711234567' }],
           },
+        },
+      ],
+    },
+  ],
+};
+
+export const messengerTextPayload = {
+  object: 'page',
+  entry: [
+    {
+      id: '101',
+      time: 1752602400000,
+      messaging: [
+        {
+          sender: { id: 'PSID-1001' },
+          recipient: { id: '101' },
+          timestamp: 1752602400000,
+          message: { mid: 'm_MSGR-1', text: 'Hola, vi el anuncio de traileros' },
         },
       ],
     },
@@ -151,6 +173,102 @@ describe('WhatsAppAdapter (channel-adapter)', () => {
       sticker: { id: 'MEDIA-STICKER-1' },
     } as never;
     expect(adapter.parse(payload)).toEqual([]);
+  });
+});
+
+describe('Messenger/Instagram adapters (meta-messaging-channels)', () => {
+  const messenger = new MessengerAdapter();
+  const instagram = new InstagramAdapter();
+
+  it('normaliza texto de Messenger: PSID sin teléfono ni nombre', () => {
+    const [msg] = messenger.parse(messengerTextPayload);
+    expect(msg).toMatchObject({
+      channel: 'messenger',
+      externalMessageId: 'm_MSGR-1',
+      externalUserId: 'PSID-1001',
+      body: 'Hola, vi el anuncio de traileros',
+    });
+    expect(msg?.phoneE164).toBeUndefined();
+    expect(msg?.senderName).toBeUndefined();
+    expect(msg?.sentAt.toISOString()).toBe('2025-07-15T18:00:00.000Z');
+  });
+
+  it('object=instagram va al canal instagram y page produce vacío ahí', () => {
+    const payload = structuredClone(messengerTextPayload) as Record<string, unknown>;
+    payload['object'] = 'instagram';
+    const [msg] = instagram.parse(payload);
+    expect(msg?.channel).toBe('instagram');
+    expect(instagram.parse(messengerTextPayload)).toEqual([]);
+    expect(messenger.parse(payload)).toEqual([]);
+  });
+
+  it('adjunto de audio → kind=audio con la URL de CDN como externalId', () => {
+    const payload = structuredClone(messengerTextPayload);
+    payload.entry[0]!.messaging[0]!.message = {
+      mid: 'm_MSGR-AUDIO-1',
+      attachments: [
+        { type: 'audio', payload: { url: 'https://cdn.fbsbx.com/v/audio.mp4?sig=abc' } },
+      ],
+    } as never;
+    const [msg] = messenger.parse(payload);
+    expect(msg).toMatchObject({
+      kind: 'audio',
+      media: { externalId: 'https://cdn.fbsbx.com/v/audio.mp4?sig=abc' },
+      body: undefined,
+    });
+  });
+
+  it('adjunto file → kind=document; sticker/share se ignoran', () => {
+    const payload = structuredClone(messengerTextPayload);
+    payload.entry[0]!.messaging[0]!.message = {
+      mid: 'm_MSGR-FILE-1',
+      attachments: [{ type: 'file', payload: { url: 'https://cdn.fbsbx.com/cv.pdf?sig=x' } }],
+    } as never;
+    expect(messenger.parse(payload)[0]?.kind).toBe('document');
+
+    payload.entry[0]!.messaging[0]!.message = {
+      mid: 'm_MSGR-STICKER-1',
+      attachments: [{ type: 'template', payload: {} }],
+    } as never;
+    expect(messenger.parse(payload)).toEqual([]);
+  });
+
+  it('referral de anuncio → sourceId=ad_id; ref como fallback', () => {
+    const payload = structuredClone(messengerTextPayload);
+    (payload.entry[0]!.messaging[0] as Record<string, unknown>)['referral'] = {
+      ref: 'campania-julio',
+      ad_id: '120299999999999999',
+      source: 'ADS',
+      type: 'OPEN_THREAD',
+    };
+    const [msg] = messenger.parse(payload);
+    expect(msg?.referral).toMatchObject({ sourceId: '120299999999999999', sourceType: 'ADS' });
+
+    (payload.entry[0]!.messaging[0] as Record<string, unknown>)['referral'] = {
+      ref: 'link-organico',
+      source: 'SHORTLINK',
+    };
+    expect(messenger.parse(payload)[0]?.referral?.sourceId).toBe('link-organico');
+  });
+
+  it('echoes y eventos delivery/read producen lista vacía', () => {
+    const payload = structuredClone(messengerTextPayload);
+    payload.entry[0]!.messaging[0]!.message = {
+      mid: 'm_ECHO-1',
+      text: 'respuesta propia',
+      is_echo: true,
+    } as never;
+    expect(messenger.parse(payload)).toEqual([]);
+
+    payload.entry[0]!.messaging[0] = {
+      sender: { id: 'PSID-1001' },
+      delivery: { mids: ['m_X'], watermark: 1752602400000 },
+    } as never;
+    expect(messenger.parse(payload)).toEqual([]);
+    expect(messenger.parse({ object: 'page', entry: [{ messaging: [{ read: {} }] }] })).toEqual(
+      [],
+    );
+    expect(messenger.parse(null)).toEqual([]);
   });
 });
 
