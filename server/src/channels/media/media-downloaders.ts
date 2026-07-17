@@ -6,6 +6,8 @@ import { ChannelName } from '../channel-adapter';
 export interface DownloadedMedia {
   data: Buffer;
   mimeType?: string;
+  /** Nombre de archivo sugerido cuando el externalId no sirve como tal (URLs). */
+  filename?: string;
 }
 
 /**
@@ -20,7 +22,10 @@ export interface MediaDownloader {
 
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 
-async function fetchBuffer(url: string, headers?: Record<string, string>): Promise<Buffer> {
+async function fetchBuffer(
+  url: string,
+  headers?: Record<string, string>,
+): Promise<{ data: Buffer; contentType?: string }> {
   const response = await fetch(url, { headers });
   if (!response.ok) {
     throw new DomainError('MEDIA_DOWNLOAD_FAILED', `HTTP ${response.status} al descargar media`);
@@ -29,7 +34,7 @@ async function fetchBuffer(url: string, headers?: Record<string, string>): Promi
   if (data.byteLength > MAX_MEDIA_BYTES) {
     throw new DomainError('MEDIA_TOO_LARGE', `Media de ${data.byteLength} bytes excede el límite`);
   }
-  return data;
+  return { data, contentType: response.headers.get('content-type') ?? undefined };
 }
 
 /**
@@ -57,7 +62,7 @@ export class WhatsAppMediaDownloader implements MediaDownloader {
     if (!meta.url) {
       throw new DomainError('MEDIA_RESOLVE_FAILED', `Media ${externalId} sin URL en Graph API`);
     }
-    const data = await fetchBuffer(meta.url, headers);
+    const { data } = await fetchBuffer(meta.url, headers);
     return { data, mimeType: meta.mime_type };
   }
 }
@@ -90,7 +95,30 @@ export class TelegramMediaDownloader implements MediaDownloader {
     if (!payload.ok || !filePath) {
       throw new DomainError('MEDIA_RESOLVE_FAILED', `getFile sin file_path para ${externalId}`);
     }
-    const data = await fetchBuffer(`${base}/file/bot${token}/${filePath}`);
+    const { data } = await fetchBuffer(`${base}/file/bot${token}/${filePath}`);
     return { data };
+  }
+}
+
+/**
+ * Messenger/Instagram: el externalId ES la URL firmada del CDN (la
+ * autorización viaja en la firma de la URL, sin token). Se descarga directo;
+ * el filename se deriva del path del CDN porque la URL no sirve como nombre.
+ * Si la firma expiró, el fetch falla y el job termina `failed` re-encolable.
+ */
+@Injectable()
+export class MetaCdnMediaDownloader implements MediaDownloader {
+  constructor(readonly channel: ChannelName) {}
+
+  async download(externalId: string): Promise<DownloadedMedia | null> {
+    const { data, contentType } = await fetchBuffer(externalId);
+    let filename: string | undefined;
+    try {
+      const basename = new URL(externalId).pathname.split('/').pop() ?? '';
+      filename = /^[\w][\w.-]*$/.test(basename) ? basename : undefined;
+    } catch {
+      filename = undefined;
+    }
+    return { data, mimeType: contentType, filename };
   }
 }

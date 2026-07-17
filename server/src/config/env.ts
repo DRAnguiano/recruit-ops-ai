@@ -16,6 +16,10 @@ const envSchema = z.object({
   // por WhatsApp responde CHANNEL_NOT_CONFIGURED (409).
   WHATSAPP_PHONE_NUMBER_ID: z.string().min(1).optional(),
   TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
+  // Messenger/Instagram (Send API): página de Facebook con la cuenta IG
+  // conectada. Sin ellos, esos canales ingieren pero no pueden enviar.
+  META_PAGE_ID: z.string().min(1).optional(),
+  META_PAGE_ACCESS_TOKEN: z.string().min(1).optional(),
   MEDIA_STORAGE_DIR: z.string().min(1).default('./storage/media'),
   // Bot gateway (FastAPI externo): sin estos dos, el gateway queda
   // deshabilitado — no se notifica al bot y /bot/v1/actions responde 403.

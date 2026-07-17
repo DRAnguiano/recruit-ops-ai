@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { loadEnv } from '../config/env';
+import { InstagramAdapter, MessengerAdapter } from './adapters/meta-messaging.adapter';
 import { TelegramAdapter } from './adapters/telegram.adapter';
 import { WhatsAppAdapter } from './adapters/whatsapp.adapter';
 import { ChannelQueuesService } from './channel-queues.service';
@@ -19,7 +20,7 @@ import { TelegramSecretGuard } from './guards/telegram-secret.guard';
 /**
  * Puerta de entrada omnicanal. Política de ACK: una vez autenticado el
  * request, SIEMPRE 200 — payloads sin mensajes procesables (statuses, edits,
- * Messenger/Instagram aún sin soporte) se aceptan sin efecto. Un webhook que
+ * echoes, eventos de lectura) se aceptan sin efecto. Un webhook que
  * responde 5xx repetidamente es desactivado por Meta.
  *
  * Desde add-media-messages el controlador solo autentica, parsea y ENCOLA
@@ -33,6 +34,8 @@ export class WebhooksController {
   constructor(
     private readonly whatsappAdapter: WhatsAppAdapter,
     private readonly telegramAdapter: TelegramAdapter,
+    private readonly messengerAdapter: MessengerAdapter,
+    private readonly instagramAdapter: InstagramAdapter,
     private readonly queues: ChannelQueuesService,
   ) {}
 
@@ -64,9 +67,12 @@ export class WebhooksController {
           statuses.map((s) => ({ channel: 'whatsapp', ...s })),
         );
       }
+    } else if (object === 'page') {
+      await this.queues.enqueueInbound(this.messengerAdapter.parse(payload));
+    } else if (object === 'instagram') {
+      await this.queues.enqueueInbound(this.instagramAdapter.parse(payload));
     } else {
-      // page (Messenger) / instagram llegan en add-channels-messenger-instagram.
-      this.logger.log(`Evento Meta no procesado aún: object=${String(object)}`);
+      this.logger.log(`Evento Meta no procesado: object=${String(object)}`);
     }
     return { received: true };
   }
