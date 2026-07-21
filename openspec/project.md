@@ -222,6 +222,7 @@ En orden de dependencia (cada uno atómico, ~12-15 tareas máx.):
     evidencia (fuente + cita), precursor del score auditable ✅ (archivado 2026-07-20)
 11b. `add-custom-fields-ui` — captura/edición de campos personalizados desde la SPA
     (formulario dinámico por entidad, edición del diccionario); split acordado desde 11
+    ✅ (archivado 2026-07-21)
 12. *(F3)* `add-campaign-management`, `add-scoring`, `add-documents`, `add-followups`
 
 ## 11. Stack y convenciones

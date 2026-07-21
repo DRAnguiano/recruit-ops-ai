@@ -23,6 +23,41 @@ export interface CatalogEntry {
   sortOrder: number;
 }
 
+/** Tipo de dato de un campo personalizado (add-custom-fields). */
+export type FieldType = 'text' | 'number' | 'boolean' | 'select' | 'date';
+
+/**
+ * Definición de un campo personalizado de lead o persona
+ * (add-custom-fields): `key` es el identificador de dominio (inmutable);
+ * `options` solo aplica cuando `type === 'select'`.
+ */
+export interface FieldDefinition {
+  id: string;
+  key: string;
+  label: string;
+  type: FieldType;
+  options: string[] | null;
+  required: boolean;
+  active: boolean;
+  sortOrder: number;
+}
+
+/**
+ * Definición + valor actual (o null) de un campo personalizado para una
+ * entidad concreta, tal como lo devuelve `GET .../custom-fields`.
+ */
+export interface FieldValue {
+  key: string;
+  label: string;
+  type: FieldType;
+  options: string[] | null;
+  required: boolean;
+  value: string | number | boolean | null;
+  source: 'human' | 'ai' | null;
+  evidenceText: string | null;
+  evidenceMessageId: string | null;
+}
+
 export interface ChatLead {
   id?: string; // uuid del lead en el backend (migrate-spa-to-api)
   personId?: string; // uuid de la persona (para cargar sus conversaciones)

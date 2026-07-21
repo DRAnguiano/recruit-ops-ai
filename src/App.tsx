@@ -37,6 +37,7 @@ import CampaignsView from './components/CampaignsView';
 import CoverageView from './components/CoverageView';
 import ImportModule from './components/ImportModule';
 import AdminView from './components/AdminView';
+import CustomFieldsPanel from './components/CustomFieldsPanel';
 
 // Tipos y capa de API (la app ya no usa IndexedDB: migrate-spa-to-api)
 import { CatalogEntry, ChatLead, Operator, MarketingCampaign, FleetData, MonthlyGoal, JobVacancy, WorkScheduleSettings } from './types';
@@ -1515,6 +1516,12 @@ export default function App() {
                 <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold text-[10px]">{activeChatLead.status}</span>
               </div>
             </div>
+
+            {/* Campos personalizados del lead y la persona (add-custom-fields-ui) */}
+            <CustomFieldsPanel
+              leadId={activeChatLead.id}
+              personId={activeChatLead.personId}
+            />
 
             {/* Historial real de mensajes (todas las conversaciones de la persona) */}
             <div className="flex-1 overflow-y-auto p-6 bg-slate-100 space-y-4">

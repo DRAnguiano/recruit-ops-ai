@@ -18,13 +18,21 @@ import {
   Plus,
   Save,
   Settings,
+  SlidersHorizontal,
   Target,
   Trash2,
   X
 } from 'lucide-react';
-import { CatalogEntry, WorkScheduleSettings } from '../types';
+import { CatalogEntry, FieldDefinition, FieldType, WorkScheduleSettings } from '../types';
 import { api, ApiError } from '../api/client';
 import { ApiGoal } from '../api/mappers';
+import {
+  createFieldDefinition,
+  deleteFieldDefinition,
+  FieldEntity,
+  listFieldDefinitions,
+  updateFieldDefinition,
+} from '../api/custom-fields';
 
 // ── Tabla genérica de catálogo (companies/circuits/vacancy-types/lead-statuses) ──
 
@@ -246,6 +254,346 @@ function CatalogTable({ endpoint, title, entries, onChanged }: CatalogTableProps
           type="submit"
           disabled={busy || !newName.trim() || !newLabel.trim()}
           className="bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition cursor-pointer"
+        >
+          <Plus size={13} />
+          Agregar
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// ── Tabla del diccionario de campos personalizados (lead / persona) ──────
+
+const FIELD_TYPES: Array<{ value: FieldType; label: string }> = [
+  { value: 'text', label: 'Texto' },
+  { value: 'number', label: 'Número' },
+  { value: 'boolean', label: 'Sí/No' },
+  { value: 'select', label: 'Lista (select)' },
+  { value: 'date', label: 'Fecha' },
+];
+
+/** "A, B, C" → ['A','B','C']; vacío → []. */
+const parseOptions = (raw: string): string[] =>
+  raw.split(',').map((s) => s.trim()).filter(Boolean);
+
+interface FieldDefinitionsTableProps {
+  entity: FieldEntity; // 'leads' | 'people'
+  title: string;
+}
+
+function FieldDefinitionsTable({ entity, title }: FieldDefinitionsTableProps) {
+  const [defs, setDefs] = useState<FieldDefinition[]>([]);
+  const [newKey, setNewKey] = useState('');
+  const [newLabel, setNewLabel] = useState('');
+  const [newType, setNewType] = useState<FieldType>('text');
+  const [newOptions, setNewOptions] = useState('');
+  const [newRequired, setNewRequired] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState('');
+  const [editType, setEditType] = useState<FieldType>('text');
+  const [editOptions, setEditOptions] = useState('');
+  const [editRequired, setEditRequired] = useState(false);
+  const [editSortOrder, setEditSortOrder] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const reload = async () => {
+    setDefs(await listFieldDefinitions(entity));
+  };
+
+  useEffect(() => {
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity]);
+
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      await reload();
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'RESOURCE_REFERENCED') {
+        setError(`${err.message} Sugerencia: desactívalo en lugar de borrarlo.`);
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Error inesperado');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCreate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newKey.trim() || !newLabel.trim()) return;
+    void run(async () => {
+      await createFieldDefinition(entity, {
+        key: newKey.trim(),
+        label: newLabel.trim(),
+        type: newType,
+        ...(newType === 'select' ? { options: parseOptions(newOptions) } : {}),
+        required: newRequired,
+      });
+      setNewKey('');
+      setNewLabel('');
+      setNewType('text');
+      setNewOptions('');
+      setNewRequired(false);
+    });
+  };
+
+  const startEdit = (def: FieldDefinition) => {
+    setEditingId(def.id);
+    setEditLabel(def.label);
+    setEditType(def.type);
+    setEditOptions((def.options ?? []).join(', '));
+    setEditRequired(def.required);
+    setEditSortOrder(def.sortOrder);
+    setError(null);
+  };
+
+  const handleSaveEdit = (def: FieldDefinition) => {
+    void run(async () => {
+      await updateFieldDefinition(entity, def.id, {
+        label: editLabel.trim(),
+        type: editType,
+        options: editType === 'select' ? parseOptions(editOptions) : null,
+        required: editRequired,
+        sortOrder: editSortOrder,
+      });
+      setEditingId(null);
+    });
+  };
+
+  const handleToggleActive = (def: FieldDefinition) => {
+    void run(async () => {
+      await updateFieldDefinition(entity, def.id, { active: !def.active });
+    });
+  };
+
+  const handleDelete = (def: FieldDefinition) => {
+    if (!confirm(`¿Borrar el campo "${def.label}" (${def.key})?`)) return;
+    void run(async () => {
+      await deleteFieldDefinition(entity, def.id);
+    });
+  };
+
+  return (
+    <div className="metric-card overflow-hidden flex flex-col">
+      <div className="p-4 border-b border-slate-100">
+        <h3 className="font-bold text-sm text-slate-900">{title}</h3>
+        <p className="text-[10px] text-slate-400 mt-0.5">
+          La clave (key) es inmutable; edita label, tipo, opciones, requerido, orden o desactiva.
+          Las opciones solo aplican al tipo Lista.
+        </p>
+      </div>
+
+      {error && (
+        <div className="mx-4 mt-3 p-2 bg-red-50 border border-red-200 text-red-700 text-[11px] rounded-lg font-medium">
+          {error}
+        </div>
+      )}
+
+      <div className="overflow-x-auto flex-1">
+        <table className="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-100">
+              <th className="p-2.5">Key</th>
+              <th className="p-2.5">Label</th>
+              <th className="p-2.5 w-28">Tipo</th>
+              <th className="p-2.5">Opciones</th>
+              <th className="p-2.5 w-12">Req</th>
+              <th className="p-2.5 w-14">Orden</th>
+              <th className="p-2.5 w-20">Activo</th>
+              <th className="p-2.5 w-24 text-center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {defs.map((def) => (
+              <tr key={def.id} className={`hover:bg-slate-50/50 ${!def.active ? 'opacity-50' : ''}`}>
+                <td className="p-2.5 font-mono font-semibold text-slate-700">{def.key}</td>
+                <td className="p-2.5">
+                  {editingId === def.id ? (
+                    <input
+                      type="text"
+                      value={editLabel}
+                      onChange={(e) => setEditLabel(e.target.value)}
+                      className="w-full border border-slate-300 rounded px-1.5 py-1 text-xs"
+                    />
+                  ) : (
+                    <span className="font-medium text-slate-800">{def.label}</span>
+                  )}
+                </td>
+                <td className="p-2.5">
+                  {editingId === def.id ? (
+                    <select
+                      value={editType}
+                      onChange={(e) => setEditType(e.target.value as FieldType)}
+                      className="w-full border border-slate-300 rounded px-1 py-1 text-xs bg-white"
+                    >
+                      {FIELD_TYPES.map((t) => (
+                        <option key={t.value} value={t.value}>{t.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="text-slate-600">
+                      {FIELD_TYPES.find((t) => t.value === def.type)?.label ?? def.type}
+                    </span>
+                  )}
+                </td>
+                <td className="p-2.5">
+                  {editingId === def.id ? (
+                    editType === 'select' ? (
+                      <input
+                        type="text"
+                        value={editOptions}
+                        onChange={(e) => setEditOptions(e.target.value)}
+                        placeholder="A, B, C"
+                        className="w-full border border-slate-300 rounded px-1.5 py-1 text-xs"
+                      />
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )
+                  ) : (
+                    <span className="text-slate-500 text-[11px]">
+                      {def.options && def.options.length > 0 ? def.options.join(', ') : '—'}
+                    </span>
+                  )}
+                </td>
+                <td className="p-2.5 text-center">
+                  {editingId === def.id ? (
+                    <input
+                      type="checkbox"
+                      checked={editRequired}
+                      onChange={(e) => setEditRequired(e.target.checked)}
+                    />
+                  ) : (
+                    <span className="text-slate-500">{def.required ? 'Sí' : '—'}</span>
+                  )}
+                </td>
+                <td className="p-2.5">
+                  {editingId === def.id ? (
+                    <input
+                      type="number"
+                      value={editSortOrder}
+                      onChange={(e) => setEditSortOrder(Number(e.target.value))}
+                      className="w-12 border border-slate-300 rounded px-1.5 py-1 text-xs font-mono"
+                    />
+                  ) : (
+                    <span className="font-mono text-slate-500">{def.sortOrder}</span>
+                  )}
+                </td>
+                <td className="p-2.5">
+                  <button
+                    onClick={() => handleToggleActive(def)}
+                    disabled={busy}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition cursor-pointer ${
+                      def.active
+                        ? 'bg-green-50 text-green-700 border border-green-200'
+                        : 'bg-slate-100 text-slate-500 border border-slate-200'
+                    }`}
+                  >
+                    {def.active ? 'Activo' : 'Inactivo'}
+                  </button>
+                </td>
+                <td className="p-2.5 text-center whitespace-nowrap">
+                  {editingId === def.id ? (
+                    <>
+                      <button
+                        onClick={() => handleSaveEdit(def)}
+                        disabled={busy}
+                        title="Guardar"
+                        className="text-green-600 hover:bg-green-50 p-1.5 rounded transition cursor-pointer"
+                      >
+                        <Check size={14} />
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        title="Cancelar"
+                        className="text-slate-400 hover:bg-slate-100 p-1.5 rounded transition cursor-pointer"
+                      >
+                        <X size={14} />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => startEdit(def)}
+                        title="Editar"
+                        className="text-slate-500 hover:bg-slate-100 p-1.5 rounded transition cursor-pointer"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(def)}
+                        disabled={busy}
+                        title="Borrar (falla si tiene valores guardados)"
+                        className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded transition cursor-pointer"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {defs.length === 0 && (
+              <tr>
+                <td colSpan={8} className="p-4 text-center text-slate-400 text-[11px]">
+                  Sin campos personalizados definidos.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Alta: key + label + tipo (+ opciones si select) + requerido */}
+      <form onSubmit={handleCreate} className="p-3 border-t border-slate-100 bg-slate-50/50 grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
+        <input
+          type="text"
+          placeholder="key (ej. licencia)"
+          value={newKey}
+          onChange={(e) => setNewKey(e.target.value)}
+          className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-mono"
+        />
+        <input
+          type="text"
+          placeholder="Label (ej. Tipo de licencia)"
+          value={newLabel}
+          onChange={(e) => setNewLabel(e.target.value)}
+          className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
+        />
+        <select
+          value={newType}
+          onChange={(e) => setNewType(e.target.value as FieldType)}
+          className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
+        >
+          {FIELD_TYPES.map((t) => (
+            <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
+        </select>
+        <input
+          type="text"
+          placeholder="Opciones (A, B, C)"
+          value={newOptions}
+          onChange={(e) => setNewOptions(e.target.value)}
+          disabled={newType !== 'select'}
+          className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs disabled:bg-slate-100 disabled:opacity-50"
+        />
+        <label className="flex items-center gap-1.5 text-xs text-slate-600 font-medium px-1">
+          <input
+            type="checkbox"
+            checked={newRequired}
+            onChange={(e) => setNewRequired(e.target.checked)}
+          />
+          Requerido
+        </label>
+        <button
+          type="submit"
+          disabled={busy || !newKey.trim() || !newLabel.trim()}
+          className="bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer"
         >
           <Plus size={13} />
           Agregar
@@ -761,6 +1109,22 @@ export default function AdminView({
         vacancyTypes={vacancyTypes}
         onChanged={onRefreshAll}
       />
+
+      {/* Campos personalizados (diccionario de lead y persona) */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal className="text-orange-500" size={16} />
+          <div>
+            <h3 className="font-bold text-sm text-slate-900">Campos Personalizados</h3>
+            <p className="text-[11px] text-slate-500">
+              Diccionario de datos capturables del candidato (lead) y de la persona; los valores
+              se llenan desde el visor de conversación. Base del score auditable.
+            </p>
+          </div>
+        </div>
+        <FieldDefinitionsTable entity="leads" title="Campos de Lead" />
+        <FieldDefinitionsTable entity="people" title="Campos de Persona" />
+      </div>
 
       {/* Settings + horario */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

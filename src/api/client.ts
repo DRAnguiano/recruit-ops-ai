@@ -20,6 +20,8 @@ export class ApiError extends Error {
     public readonly code: string,
     message: string,
     public readonly status: number,
+    /** Resto del cuerpo del error de dominio (ej. `allowed`, `issues`). */
+    public readonly details: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -39,14 +41,21 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     let code = 'HTTP_ERROR';
     let message = `HTTP ${response.status}`;
+    let details: Record<string, unknown> = {};
     try {
-      const body = (await response.json()) as { code?: string; message?: string };
+      const body = (await response.json()) as Record<string, unknown> & {
+        code?: string;
+        message?: string;
+      };
       code = body.code ?? code;
       message = body.message ?? message;
+      // Conserva el resto del error de dominio (allowed, issues, …) menos code/message.
+      const { code: _c, message: _m, ...rest } = body;
+      details = rest;
     } catch {
       // cuerpo no-JSON: se conserva el mensaje genérico
     }
-    throw new ApiError(code, message, response.status);
+    throw new ApiError(code, message, response.status, details);
   }
   return (await response.json()) as T;
 }
