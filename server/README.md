@@ -61,11 +61,27 @@ test/          Tests de humo de la fundación + canales + API
 |---|---|---|
 | `GET /webhooks/meta` | `hub.verify_token` = `verify_token` de la credencial `meta_app` activa | Handshake de alta del webhook en Meta |
 | `POST /webhooks/meta` | HMAC `X-Hub-Signature-256` con el `app_secret` de la credencial `meta_app` activa (cuerpo crudo) | WhatsApp (`whatsapp_business_account`), Messenger (`page`) e Instagram (`instagram`) |
-| `POST /webhooks/telegram` | Header `X-Telegram-Bot-Api-Secret-Token` = `webhook_secret` de la credencial `telegram` activa | Registrar con `setWebhook` + `secret_token` |
+| `POST /webhooks/telegram/:accountId` | Header `X-Telegram-Bot-Api-Secret-Token` = `webhook_secret` de la credencial `telegram` de esa cuenta | Un path por bot; registrar con `setWebhook` + `secret_token` apuntando a su propio `:accountId` |
 
 Las credenciales ya no son variables de entorno: viven cifradas en la DB (ver
 **Credenciales de canal** abajo). Sin credencial activa del tipo correspondiente, el
 webhook responde 403.
+
+**Varias cuentas por canal (multi-account-routing)**: puede haber varias credenciales
+activas de un mismo `kind` (varios números de WhatsApp, varias páginas de Meta, varios
+bots de Telegram), una por cuenta. WhatsApp y Meta identifican la cuenta destino en el
+propio payload (`metadata.phone_number_id` / `entry[].id`); Telegram no lo trae, así que
+cada bot usa su propio `:accountId` en el path — es la única señal fiable, y ya es cómo
+Telegram separa webhooks por bot. La conversación guarda esa cuenta
+(`conversations.channel_account`) y el envío saliente responde por la credencial de esa
+cuenta, no por "la activa" genérica. Conversaciones previas a este change (sin cuenta)
+hacen fallback a la única credencial activa del kind; si hay varias, el envío responde 409
+`CHANNEL_NOT_CONFIGURED` (ambiguo) hasta reasignarlas.
+
+**Alta de una segunda cuenta**: crear la credencial por `POST /api/channel-credentials`
+con sus secretos (el `account_external_id` se deriva solo, no es input); para Telegram,
+registrar el webhook de ese bot con `setWebhook` apuntando a
+`/webhooks/telegram/<id-del-bot>` (el prefijo numérico del `bot_token` antes de `:`).
 
 Reglas: sin secret configurado el endpoint responde 403; autenticado, SIEMPRE responde 200
 aunque el payload no traiga mensajes procesables (edits, reacciones) — Meta desactiva
@@ -96,19 +112,22 @@ env: `CHANNEL_CREDENTIALS_KEY` (base64 de 32 bytes, `openssl rand -base64 32`). 
 todos los canales quedan deshabilitados (webhooks 403, envío `CHANNEL_NOT_CONFIGURED`,
 media `pending`) sin impedir el arranque.
 
-Tipos de credencial (`kind`) y sus secretos, uno activo por tipo en este change:
+Tipos de credencial (`kind`) y sus secretos. `meta_app` es singleton (nivel-app, la firma
+del webhook); los demás admiten varias activas, una por `account_external_id`:
 
-| `kind` | Secretos | Usa |
-|---|---|---|
-| `meta_app` | `app_secret`, `verify_token` | Firma y handshake del webhook de Meta (compartido WhatsApp/Messenger/Instagram) |
-| `whatsapp` | `access_token`, `phone_number_id` | Descarga de media y envío por Cloud API |
-| `meta_page` | `page_id`, `page_access_token` | Envío por Send API (Messenger/Instagram) |
-| `telegram` | `bot_token`, `webhook_secret` | Descarga de media, envío y verificación del webhook |
+| `kind` | Secretos | Cuenta (`account_external_id`) | Usa |
+|---|---|---|---|
+| `meta_app` | `app_secret`, `verify_token` | — (singleton) | Firma y handshake del webhook de Meta (compartido WhatsApp/Messenger/Instagram) |
+| `whatsapp` | `access_token`, `phone_number_id` | `phone_number_id` | Descarga de media y envío por Cloud API |
+| `meta_page` | `page_id`, `page_access_token` | `page_id` | Envío por Send API (Messenger/Instagram) |
+| `telegram` | `bot_token`, `webhook_secret` | prefijo numérico del `bot_token` | Descarga de media, envío y verificación del webhook |
 
-**API** (`/api/channel-credentials`): `GET` lista solo metadatos (`kind`, `label`,
-`active`, `configured`) — **nunca** los secretos; `POST` crea (secretos validados por
-`kind`, se cifran); `PATCH` edita `label`/`active` y/o rota los secretos; `DELETE` borra.
-Toda mutación audita en `domain_events` sin el secreto.
+**API** (`/api/channel-credentials`): `GET` lista metadatos (`kind`, `accountExternalId`,
+`label`, `active`, `configured`) — **nunca** los secretos; `POST` crea (secretos validados
+por `kind`, se cifran; `account_external_id` se deriva de los secretos, no es input);
+`PATCH` edita `label`/`active` y/o rota los secretos (re-deriva la cuenta); `DELETE` borra
+— responde 409 `RESOURCE_REFERENCED` si hay conversaciones usando esa cuenta. Toda mutación
+audita en `domain_events` sin el secreto.
 
 **Migración desde env**: al primer arranque, si `CHANNEL_CREDENTIALS_KEY` está puesta y
 aún tienes las variables legacy de canal en tu entorno, el seed las importa una vez al

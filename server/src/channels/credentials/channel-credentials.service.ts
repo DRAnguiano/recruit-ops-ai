@@ -1,9 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { DB, Database } from '../../database/database.module';
 import { DomainError, notFound } from '../../common/domain-error';
 import { DomainEventsService } from '../../events/domain-events.service';
-import { channelCredentials } from '../../database/schema';
+import { channelCredentials, conversations } from '../../database/schema';
 import { CredentialCipher } from './credential-cipher';
 
 /** Token DI del cipher; null cuando no hay llave maestra configurada. */
@@ -41,11 +41,42 @@ export interface TelegramSecrets {
 export interface CredentialMetadata {
   id: string;
   kind: CredentialKind;
+  accountExternalId: string | null;
   label: string;
   active: boolean;
   configured: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** Campo de secreto que identifica la cuenta por kind (null para meta_app). */
+const ACCOUNT_SECRET_FIELD: Record<CredentialKind, string | null> = {
+  meta_app: null,
+  whatsapp: 'phone_number_id',
+  meta_page: 'page_id',
+  telegram: 'bot_token',
+};
+
+/**
+ * `conversations.channel` que puede referenciar la cuenta de cada kind
+ * (meta_page cubre Messenger e Instagram; meta_app no es una cuenta, sin
+ * canal). No es una FK real (`channel_account` es texto libre), así que el
+ * borrado referenciado se valida a mano, igual que en catalog-entries.
+ */
+const CHANNELS_BY_KIND: Record<CredentialKind, string[]> = {
+  meta_app: [],
+  whatsapp: ['whatsapp'],
+  meta_page: ['messenger', 'instagram'],
+  telegram: ['telegram'],
+};
+
+/** Deriva el `account_external_id` de los secretos (telegram: id antes de `:`). */
+function accountFromSecrets(kind: CredentialKind, secrets: Record<string, string>): string | null {
+  const field = ACCOUNT_SECRET_FIELD[kind];
+  if (!field) return null;
+  const value = secrets[field];
+  if (!value) return null;
+  return kind === 'telegram' ? (value.split(':')[0] ?? value) : value;
 }
 
 const CACHE_TTL_MS = 60_000;
@@ -65,7 +96,7 @@ interface CacheEntry {
 @Injectable()
 export class ChannelCredentialsService {
   private readonly logger = new Logger(ChannelCredentialsService.name);
-  private readonly cache = new Map<CredentialKind, CacheEntry>();
+  private readonly cache = new Map<string, CacheEntry>();
 
   constructor(
     @Inject(DB) private readonly db: Database,
@@ -75,35 +106,62 @@ export class ChannelCredentialsService {
 
   // ── Resolución (lado lectura) ───────────────────────────────────────────
 
-  /** Secretos descifrados de la credencial activa de `kind`, o null. Nunca lanza. */
-  async resolve(kind: CredentialKind): Promise<Record<string, string> | null> {
-    const cached = this.cache.get(kind);
+  /**
+   * Secretos descifrados de la credencial activa de `kind` para `accountId`, o
+   * null. Sin `accountId` (conversaciones previas al ruteo multi-cuenta) usa la
+   * ÚNICA activa del kind; si hay varias es ambiguo → null. Nunca lanza.
+   */
+  async resolveByAccount(
+    kind: CredentialKind,
+    accountId?: string | null,
+  ): Promise<Record<string, string> | null> {
+    const key = `${kind}:${accountId ?? ''}`;
+    const cached = this.cache.get(key);
     if (cached && cached.expiresAt > Date.now()) return cached.secrets;
 
-    const secrets = await this.load(kind);
-    this.cache.set(kind, { secrets, expiresAt: Date.now() + CACHE_TTL_MS });
+    const secrets = await this.load(kind, accountId);
+    this.cache.set(key, { secrets, expiresAt: Date.now() + CACHE_TTL_MS });
     return secrets;
   }
 
   async metaApp(): Promise<MetaAppSecrets | null> {
-    return (await this.resolve('meta_app')) as MetaAppSecrets | null;
+    return (await this.resolveByAccount('meta_app')) as MetaAppSecrets | null;
   }
-  async whatsapp(): Promise<WhatsAppSecrets | null> {
-    return (await this.resolve('whatsapp')) as WhatsAppSecrets | null;
+  async whatsapp(accountId?: string | null): Promise<WhatsAppSecrets | null> {
+    return (await this.resolveByAccount('whatsapp', accountId)) as WhatsAppSecrets | null;
   }
-  async metaPage(): Promise<MetaPageSecrets | null> {
-    return (await this.resolve('meta_page')) as MetaPageSecrets | null;
+  async metaPage(accountId?: string | null): Promise<MetaPageSecrets | null> {
+    return (await this.resolveByAccount('meta_page', accountId)) as MetaPageSecrets | null;
   }
-  async telegram(): Promise<TelegramSecrets | null> {
-    return (await this.resolve('telegram')) as TelegramSecrets | null;
+  async telegram(accountId?: string | null): Promise<TelegramSecrets | null> {
+    return (await this.resolveByAccount('telegram', accountId)) as TelegramSecrets | null;
   }
 
-  private async load(kind: CredentialKind): Promise<Record<string, string> | null> {
+  private async load(
+    kind: CredentialKind,
+    accountId?: string | null,
+  ): Promise<Record<string, string> | null> {
     if (!this.cipher) return null;
-    const row = await this.db.query.channelCredentials.findFirst({
-      where: and(eq(channelCredentials.kind, kind), eq(channelCredentials.active, true)),
-    });
+
+    let row: typeof channelCredentials.$inferSelect | undefined;
+    if (accountId) {
+      row = await this.db.query.channelCredentials.findFirst({
+        where: and(
+          eq(channelCredentials.kind, kind),
+          eq(channelCredentials.active, true),
+          eq(channelCredentials.accountExternalId, accountId),
+        ),
+      });
+    } else {
+      // Sin cuenta: solo resuelve si hay exactamente una activa del kind.
+      const rows = await this.db.query.channelCredentials.findMany({
+        where: and(eq(channelCredentials.kind, kind), eq(channelCredentials.active, true)),
+      });
+      if (rows.length !== 1) return null;
+      row = rows[0];
+    }
     if (!row) return null;
+
     try {
       return this.cipher.decrypt(row.secretsEncrypted);
     } catch (error) {
@@ -130,18 +188,19 @@ export class ChannelCredentialsService {
     secrets: Record<string, string>,
   ): Promise<CredentialMetadata> {
     const secretsEncrypted = this.encryptOrThrow(secrets);
+    const accountExternalId = accountFromSecrets(kind, secrets);
     let row: typeof channelCredentials.$inferSelect | undefined;
     try {
       [row] = await this.db
         .insert(channelCredentials)
-        .values({ kind, label, secretsEncrypted })
+        .values({ kind, accountExternalId, label, secretsEncrypted })
         .returning();
     } catch (error) {
       throw this.translateWrite(error, kind);
     }
     if (!row) throw new Error('Insert into channel_credentials returned no row');
     this.invalidate();
-    await this.audit('channel_credential.created', row.id, { kind, label });
+    await this.audit('channel_credential.created', row.id, { kind, accountExternalId, label });
     return this.toMetadata(row);
   }
 
@@ -157,8 +216,10 @@ export class ChannelCredentialsService {
         where: eq(channelCredentials.id, id),
       });
       if (!existing) throw notFound('CHANNEL_CREDENTIAL_NOT_FOUND', `No existe credencial ${id}`);
-      this.assertSecretFields(existing.kind as CredentialKind, patch.secrets);
+      const kind = existing.kind as CredentialKind;
+      this.assertSecretFields(kind, patch.secrets);
       set.secretsEncrypted = this.encryptOrThrow(patch.secrets);
+      set.accountExternalId = accountFromSecrets(kind, patch.secrets);
     }
 
     let row;
@@ -182,25 +243,35 @@ export class ChannelCredentialsService {
   }
 
   async remove(id: string): Promise<void> {
-    let rows: unknown[];
-    try {
-      rows = await this.db
-        .delete(channelCredentials)
-        .where(eq(channelCredentials.id, id))
-        .returning();
-    } catch (error) {
-      // El ruteo por cuenta (add-multi-account-routing) referenciará credenciales
-      // desde conversaciones; entonces un borrado referenciado dará 23503 → 409.
-      const cause = (error as { cause?: { code?: string } }).cause;
-      if (cause?.code === '23503') {
+    const existing = await this.db.query.channelCredentials.findFirst({
+      where: eq(channelCredentials.id, id),
+    });
+    if (!existing) throw notFound('CHANNEL_CREDENTIAL_NOT_FOUND', `No existe credencial ${id}`);
+
+    // `channel_account` no es una FK real: se valida a mano si hay conversaciones
+    // de esta cuenta antes de borrar (multi-account-routing).
+    const kind = existing.kind as CredentialKind;
+    const channels = CHANNELS_BY_KIND[kind];
+    if (existing.accountExternalId && channels.length > 0) {
+      const referencing = await this.db.query.conversations.findFirst({
+        where: and(
+          inArray(conversations.channel, channels),
+          eq(conversations.channelAccount, existing.accountExternalId),
+        ),
+      });
+      if (referencing) {
         throw new DomainError(
           'RESOURCE_REFERENCED',
           'No se puede borrar: hay conversaciones que usan esta credencial',
           409,
         );
       }
-      throw error;
     }
+
+    const rows = await this.db
+      .delete(channelCredentials)
+      .where(eq(channelCredentials.id, id))
+      .returning();
     if (rows.length === 0) {
       throw notFound('CHANNEL_CREDENTIAL_NOT_FOUND', `No existe credencial ${id}`);
     }
@@ -260,12 +331,41 @@ export class ChannelCredentialsService {
     return {
       id: row.id,
       kind: row.kind as CredentialKind,
+      accountExternalId: row.accountExternalId,
       label: row.label,
       active: row.active,
       configured,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
+  }
+
+  /**
+   * Backfill idempotente (multi-account-routing): rellena `account_external_id`
+   * de las filas creadas por 10c (que no lo tenían) descifrando sus secretos.
+   * Solo toca filas con la columna en NULL; con llave incorrecta se salta.
+   */
+  async backfillAccountIds(): Promise<void> {
+    if (!this.cipher) return;
+    const rows = await this.db.query.channelCredentials.findMany({
+      where: isNull(channelCredentials.accountExternalId),
+    });
+    for (const row of rows) {
+      const kind = row.kind as CredentialKind;
+      if (ACCOUNT_SECRET_FIELD[kind] === null) continue; // meta_app: sin cuenta
+      let account: string | null;
+      try {
+        account = accountFromSecrets(kind, this.cipher.decrypt(row.secretsEncrypted));
+      } catch {
+        continue;
+      }
+      if (!account) continue;
+      await this.db
+        .update(channelCredentials)
+        .set({ accountExternalId: account, updatedAt: new Date() })
+        .where(eq(channelCredentials.id, row.id));
+    }
+    this.invalidate();
   }
 
   private async audit(

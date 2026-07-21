@@ -17,8 +17,11 @@ export interface DownloadedMedia {
  */
 export interface MediaDownloader {
   readonly channel: ChannelName;
-  /** null = canal sin token configurado (degradación, no error). */
-  download(externalId: string): Promise<DownloadedMedia | null>;
+  /**
+   * `accountId` = cuenta de la conversación (multi-account-routing); resuelve
+   * el token de esa cuenta. null = canal sin token (degradación, no error).
+   */
+  download(externalId: string, accountId?: string | null): Promise<DownloadedMedia | null>;
 }
 
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
@@ -48,9 +51,9 @@ export class WhatsAppMediaDownloader implements MediaDownloader {
 
   constructor(private readonly credentials: ChannelCredentialsService) {}
 
-  async download(externalId: string): Promise<DownloadedMedia | null> {
+  async download(externalId: string, accountId?: string | null): Promise<DownloadedMedia | null> {
     const env = loadEnv();
-    const token = (await this.credentials.whatsapp())?.access_token;
+    const token = (await this.credentials.whatsapp(accountId))?.access_token;
     if (!token) return null;
 
     const headers = { Authorization: `Bearer ${token}` };
@@ -77,9 +80,9 @@ export class TelegramMediaDownloader implements MediaDownloader {
 
   constructor(private readonly credentials: ChannelCredentialsService) {}
 
-  async download(externalId: string): Promise<DownloadedMedia | null> {
+  async download(externalId: string, accountId?: string | null): Promise<DownloadedMedia | null> {
     const env = loadEnv();
-    const token = (await this.credentials.telegram())?.bot_token;
+    const token = (await this.credentials.telegram(accountId))?.bot_token;
     if (!token) return null;
 
     const base = env.TELEGRAM_API_BASE_URL;

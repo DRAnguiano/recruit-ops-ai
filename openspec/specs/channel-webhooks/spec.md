@@ -31,17 +31,26 @@ or the absence of an active credential MUST be rejected with 403 and MUST NOT be
 - **THEN** the API responds 403 and nothing is enqueued nor persisted
 
 ### Requirement: Telegram webhook authentication
-`POST /webhooks/telegram` SHALL require the `X-Telegram-Bot-Api-Secret-Token` header to
-match the `webhook_secret` of the active `telegram` credential resolved from the encrypted
-store; mismatches or the absence of an active credential MUST be rejected with 403.
+`POST /webhooks/telegram/:accountId` SHALL require the `X-Telegram-Bot-Api-Secret-Token`
+header to match the `webhook_secret` of the active `telegram` credential whose
+`account_external_id` equals `:accountId`, resolved from the encrypted store; mismatches or
+the absence of that credential MUST be rejected with 403. The `:accountId` is threaded to
+the parsed messages as their destination account so replies go through the same bot. Each
+bot registers `setWebhook` to its own path.
 
-#### Scenario: Valid secret token
-- **WHEN** Telegram sends an update with the correct secret header
-- **THEN** the parsed messages are enqueued on `channels.inbound` and the API responds 200
+#### Scenario: Valid secret token on the bot's path
+- **WHEN** Telegram sends an update to `/webhooks/telegram/:accountId` with the correct
+  secret header for that bot's credential
+- **THEN** the parsed messages are enqueued on `channels.inbound` tagged with that account
+  and the API responds 200
 
-#### Scenario: Missing secret token
-- **WHEN** the header is missing or wrong
+#### Scenario: Secret of a different bot rejected
+- **WHEN** the secret header matches a different bot's credential than `:accountId`
 - **THEN** the API responds 403 and nothing is enqueued nor persisted
+
+#### Scenario: Unknown account path rejected
+- **WHEN** `:accountId` has no active `telegram` credential
+- **THEN** the API responds 403
 
 ### Requirement: Fast ACK policy
 Authenticated webhook requests SHALL be acknowledged with 200 even when the payload

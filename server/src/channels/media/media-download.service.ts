@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { DB, Database } from '../../database/database.module';
-import { messages, MessageMedia } from '../../database/schema';
+import { conversations, messages, MessageMedia } from '../../database/schema';
 import { DomainEventsService } from '../../events/domain-events.service';
 import {
   MediaDownloader,
@@ -59,7 +59,12 @@ export class MediaDownloadService {
     const downloader = this.downloaders.get(message.channel);
     if (!downloader) return;
 
-    const downloaded = await downloader.download(media.externalId);
+    // Cuenta de la conversación para resolver el token correcto por número/bot
+    // (multi-account-routing); el CDN de Messenger/IG la ignora.
+    const conversation = await this.db.query.conversations.findFirst({
+      where: eq(conversations.id, message.conversationId),
+    });
+    const downloaded = await downloader.download(media.externalId, conversation?.channelAccount);
     if (!downloaded) {
       // Canal sin token: degradación consciente, la media sigue pending.
       this.logger.warn(`Sin token para media de ${message.channel}; mensaje ${messageId} queda pending`);

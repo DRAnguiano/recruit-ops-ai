@@ -35,7 +35,8 @@ interface MetaMessagingEvent {
 
 interface MetaMessagingPayload {
   object?: string;
-  entry?: Array<{ messaging?: MetaMessagingEvent[] }>;
+  /** entry[].id = page id (la cuenta nuestra que recibió el mensaje). */
+  entry?: Array<{ id?: string; messaging?: MetaMessagingEvent[] }>;
 }
 
 /** type de attachment de Messenger/IG → kind normalizado (`file` es documento). */
@@ -93,6 +94,7 @@ function parseMetaMessaging(
           : undefined,
         externalMessageId: message.mid,
         externalUserId: senderId,
+        destinationAccount: entry.id,
         body: message.text,
         sentAt: event.timestamp ? new Date(event.timestamp) : new Date(),
         raw: event as Record<string, unknown>,

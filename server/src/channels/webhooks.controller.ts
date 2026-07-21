@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   Logger,
+  Param,
   Post,
   Query,
   UseGuards,
@@ -78,13 +79,19 @@ export class WebhooksController {
     return { received: true };
   }
 
-  @Post('telegram')
+  @Post('telegram/:accountId')
   @HttpCode(200)
   @UseGuards(TelegramSecretGuard)
   async receiveTelegram(
+    @Param('accountId') accountId: string,
     @Body() update: Record<string, unknown>,
   ): Promise<{ received: true }> {
-    await this.queues.enqueueInbound(this.telegramAdapter.parse(update));
+    // El update de Telegram no identifica al bot receptor: la cuenta viene del
+    // path (multi-account-routing) y se etiqueta en cada mensaje normalizado.
+    const messages = this.telegramAdapter
+      .parse(update)
+      .map((m) => ({ ...m, destinationAccount: accountId }));
+    await this.queues.enqueueInbound(messages);
     return { received: true };
   }
 }

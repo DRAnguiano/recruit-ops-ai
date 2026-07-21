@@ -216,6 +216,7 @@ En orden de dependencia (cada uno atómico, ~12-15 tareas máx.):
     ✅ (archivado 2026-07-17)
 10c-2. `add-multi-account-routing` — múltiples cuentas por canal y ruteo del entrante
     a la cuenta que lo recibió (multi-página/multi-número); split acordado desde 10c
+    ✅ (archivado 2026-07-20)
 11. `add-custom-fields` — diccionario de campos personalizados para leads/personas
     (tipo, opciones, requerido), captura desde UI; precursor del score auditable
 12. *(F3)* `add-campaign-management`, `add-scoring`, `add-documents`, `add-followups`

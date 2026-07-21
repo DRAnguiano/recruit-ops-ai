@@ -68,7 +68,9 @@ function messengerWebhook(
     object: 'page',
     entry: [
       {
-        id: '101',
+        // Debe coincidir con META_PAGE_ID sembrado (multi-account-routing: la
+        // cuenta destino del entrante debe resolver la credencial `meta_page`).
+        id: 'PAGE1',
         messaging: [
           {
             sender: { id: 'PSID-E2E-1' },

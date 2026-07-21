@@ -13,7 +13,7 @@ export function configureApp(app: INestApplication): void {
   const env = loadEnv();
 
   app.setGlobalPrefix('api', {
-    exclude: ['health', 'webhooks/meta', 'webhooks/telegram', 'bot/v1/actions'],
+    exclude: ['health', 'webhooks/meta', 'webhooks/telegram/:accountId', 'bot/v1/actions'],
   });
   app.enableCors({
     origin: env.CORS_ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()),

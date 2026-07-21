@@ -96,6 +96,12 @@ export const conversations = pgTable(
       .notNull()
       .references(() => people.id),
     channel: text('channel').notNull(),
+    /**
+     * Cuenta nuestra que atiende la conversación (multi-account-routing):
+     * phone_number_id de WhatsApp, page_id de Meta, id del bot de Telegram.
+     * Null en conversaciones previas al ruteo multi-cuenta (usan fallback).
+     */
+    channelAccount: text('channel_account'),
     /** open | closed — ciclo de sistema; el estado de negocio vive en el lead. */
     status: text('status').notNull().default('open'),
     closedAt: timestamp('closed_at', { withTimezone: true }),
@@ -348,9 +354,10 @@ export const appSettings = pgTable('app_settings', {
 /**
  * Credenciales de canal cifradas (channel-credentials): los secretos por canal
  * salen de env a esta tabla. `secretsEncrypted` es base64(iv||tag||ciphertext)
- * del JSON de secretos, cifrado con AES-256-GCM y la llave maestra de env. El
- * índice único parcial impone una sola credencial activa por `kind` (el ruteo
- * multi-cuenta lo relaja en add-multi-account-routing).
+ * del JSON de secretos, cifrado con AES-256-GCM y la llave maestra de env.
+ * `accountExternalId` (multi-account-routing) identifica la cuenta (phone_number_id
+ * / page_id / id del bot); se deriva de los secretos. Los índices parciales
+ * permiten varias cuentas activas por kind pero un solo `meta_app` activo.
  */
 export const channelCredentials = pgTable(
   'channel_credentials',
@@ -358,6 +365,8 @@ export const channelCredentials = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     /** meta_app | whatsapp | meta_page | telegram */
     kind: text('kind').notNull(),
+    /** Cuenta del canal (null para meta_app, que es nivel-app). Derivado del secreto. */
+    accountExternalId: text('account_external_id'),
     label: text('label').notNull(),
     active: boolean('active').notNull().default(true),
     /** base64(iv||authTag||ciphertext) del JSON de secretos; nunca en texto plano. */
@@ -365,9 +374,14 @@ export const channelCredentials = pgTable(
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('channel_credentials_active_kind')
+    // Una cuenta activa por (kind, account) para los kinds de cuenta.
+    uniqueIndex('channel_credentials_active_account')
+      .on(t.kind, t.accountExternalId)
+      .where(sql`${t.active} AND ${t.kind} <> 'meta_app'`),
+    // meta_app es nivel-app: una sola credencial activa.
+    uniqueIndex('channel_credentials_active_meta_app')
       .on(t.kind)
-      .where(sql`${t.active}`),
+      .where(sql`${t.active} AND ${t.kind} = 'meta_app'`),
   ],
 );
 

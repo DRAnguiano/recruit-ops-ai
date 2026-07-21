@@ -5,18 +5,21 @@ import { ChannelCredentialsService } from '../credentials/channel-credentials.se
 
 /**
  * Valida X-Telegram-Bot-Api-Secret-Token contra el webhook_secret de la
- * credencial `telegram` activa (channel-credentials; el mismo secret que se
- * registra con setWebhook). Sin credencial activa → 403.
+ * credencial `telegram` de la cuenta del path (`/webhooks/telegram/:accountId`,
+ * multi-account-routing; el mismo secret que se registra con setWebhook por
+ * bot). Sin credencial de esa cuenta → 403.
  */
 @Injectable()
 export class TelegramSecretGuard implements CanActivate {
   constructor(private readonly credentials: ChannelCredentialsService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const secret = (await this.credentials.telegram())?.webhook_secret;
+    const request = context.switchToHttp().getRequest<Request>();
+    const accountId = request.params.accountId;
+    if (typeof accountId !== 'string' || !accountId) return false;
+    const secret = (await this.credentials.telegram(accountId))?.webhook_secret;
     if (!secret) return false;
 
-    const request = context.switchToHttp().getRequest<Request>();
     const header = request.headers['x-telegram-bot-api-secret-token'];
     if (typeof header !== 'string') return false;
 

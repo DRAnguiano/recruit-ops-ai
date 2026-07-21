@@ -72,5 +72,9 @@ export class ChannelCredentialsSeed implements OnModuleInit {
       await this.credentials.create(kind, label, secrets);
       this.logger.log(`Credencial ${kind} migrada de env al almacén cifrado`);
     }
+
+    // Backfill de account_external_id para credenciales creadas por 10c
+    // (multi-account-routing); idempotente, solo toca filas con la columna NULL.
+    await this.credentials.backfillAccountIds();
   }
 }

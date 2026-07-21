@@ -47,6 +47,8 @@ interface WhatsAppStatus {
 
 interface WhatsAppChangeValue {
   messaging_product?: string;
+  /** metadata.phone_number_id = número nuestro que recibió el mensaje. */
+  metadata?: { phone_number_id?: string; display_phone_number?: string };
   contacts?: WhatsAppContact[];
   messages?: WhatsAppMessage[];
   statuses?: WhatsAppStatus[];
@@ -100,9 +102,13 @@ export class WhatsAppAdapter implements ChannelAdapter {
             .map((c) => [c.wa_id, c]),
         );
 
+        const phoneNumberId = value?.metadata?.phone_number_id;
         for (const message of value?.messages ?? []) {
           const normalized = this.parseMessage(message, contactsByWaId);
-          if (normalized) result.push(normalized);
+          if (normalized) {
+            if (phoneNumberId) normalized.destinationAccount = phoneNumberId;
+            result.push(normalized);
+          }
         }
       }
     }

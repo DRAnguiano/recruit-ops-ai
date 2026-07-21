@@ -226,6 +226,14 @@ export class MessageIngestionService {
       const ageMs = inbound.sentAt.getTime() - reference.getTime();
       const isExpired = ageMs > inactivityDays * 24 * 60 * 60_000;
       if (!isExpired) {
+        // Backfill de la cuenta si la conversación abierta aún no la tenía
+        // (multi-account-routing): conversaciones previas al ruteo por cuenta.
+        if (!open.channelAccount && inbound.destinationAccount) {
+          await tx
+            .update(conversations)
+            .set({ channelAccount: inbound.destinationAccount, updatedAt: new Date() })
+            .where(eq(conversations.id, open.id));
+        }
         return { conversationId: open.id, conversationCreated: false, closedConversationId: null };
       }
       await tx
@@ -237,7 +245,12 @@ export class MessageIngestionService {
 
     const created = await tx
       .insert(conversations)
-      .values({ personId, channel: inbound.channel, lastMessageAt: inbound.sentAt })
+      .values({
+        personId,
+        channel: inbound.channel,
+        channelAccount: inbound.destinationAccount ?? null,
+        lastMessageAt: inbound.sentAt,
+      })
       .returning({ id: conversations.id });
     return {
       conversationId: created[0]!.id,

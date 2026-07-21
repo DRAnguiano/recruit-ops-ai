@@ -123,7 +123,7 @@ export class OutboundService {
         409,
       );
     }
-    if (!(await sender.isConfigured())) {
+    if (!(await sender.isConfigured(conversation.channelAccount))) {
       throw new DomainError(
         'CHANNEL_NOT_CONFIGURED',
         `Faltan credenciales activas para enviar por ${conversation.channel}`,
@@ -189,7 +189,7 @@ export class OutboundService {
     if (!conversation) return;
 
     const sender = this.senders.get(message.channel as ChannelName);
-    if (!sender || !(await sender.isConfigured())) {
+    if (!sender || !(await sender.isConfigured(conversation.channelAccount))) {
       throw new DomainError(
         'CHANNEL_NOT_CONFIGURED',
         `Canal ${message.channel} sin credenciales al entregar`,
@@ -210,7 +210,11 @@ export class OutboundService {
     }
 
     const content = message.rawPayload as unknown as OutboundContent;
-    const { externalMessageId } = await sender.send(identity.externalId, content);
+    const { externalMessageId } = await sender.send(
+      identity.externalId,
+      content,
+      conversation.channelAccount,
+    );
 
     await this.db
       .update(messages)

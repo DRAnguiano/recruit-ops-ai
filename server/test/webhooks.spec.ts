@@ -167,16 +167,29 @@ describe('webhooks (channel-webhooks)', () => {
     expect(res.status).toBe(200);
   });
 
-  it('POST /webhooks/telegram exige el secret token', async () => {
+  it('POST /webhooks/telegram/:accountId exige el secret token de esa cuenta', async () => {
     const body = JSON.stringify(telegramMessageUpdate);
-    const noSecret = await fetch(`${baseUrl}/webhooks/telegram`, {
+    // El bot de esta suite se sembró con el id derivado de `wh-bot-token` (prefijo antes de ':').
+    const accountId = 'wh-bot-token';
+    const noSecret = await fetch(`${baseUrl}/webhooks/telegram/${accountId}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body,
     });
     expect(noSecret.status).toBe(403);
 
-    const ok = await fetch(`${baseUrl}/webhooks/telegram`, {
+    // Cuenta desconocida → sin credencial que verificar → 403.
+    const unknownAccount = await fetch(`${baseUrl}/webhooks/telegram/otro-bot`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-telegram-bot-api-secret-token': TELEGRAM_SECRET,
+      },
+      body,
+    });
+    expect(unknownAccount.status).toBe(403);
+
+    const ok = await fetch(`${baseUrl}/webhooks/telegram/${accountId}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -194,5 +207,10 @@ describe('webhooks (channel-webhooks)', () => {
       return found.length === 1 ? found : null;
     });
     expect(rows[0]?.externalMessageId).toBe('777000111_42');
+
+    const conversation = await db.query.conversations.findFirst({
+      where: eq(schema.conversations.channel, 'telegram'),
+    });
+    expect(conversation?.channelAccount).toBe(accountId);
   });
 });

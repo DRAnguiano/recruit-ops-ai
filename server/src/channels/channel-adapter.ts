@@ -32,6 +32,12 @@ export interface NormalizedInboundMessage {
   externalMessageId: string;
   /** Identidad del remitente en el canal (wa_id, chat id, PSID). */
   externalUserId: string;
+  /**
+   * Cuenta NUESTRA que recibió el mensaje (multi-account-routing):
+   * phone_number_id de WhatsApp, page_id de Meta, id del bot de Telegram.
+   * Ausente en payloads sin metadata → la ingestión usa fallback.
+   */
+  destinationAccount?: string;
   senderName?: string;
   /** Teléfono E.164 (+52...) cuando el canal lo expone. */
   phoneE164?: string;

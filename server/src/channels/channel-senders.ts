@@ -20,8 +20,13 @@ export interface OutboundContent {
  */
 export interface ChannelSender {
   readonly channel: ChannelName;
-  isConfigured(): Promise<boolean>;
-  send(recipient: string, content: OutboundContent): Promise<{ externalMessageId: string }>;
+  /** `accountId` = cuenta de la conversación (multi-account-routing); null → fallback. */
+  isConfigured(accountId?: string | null): Promise<boolean>;
+  send(
+    recipient: string,
+    content: OutboundContent,
+    accountId?: string | null,
+  ): Promise<{ externalMessageId: string }>;
 }
 
 function sendFailed(channel: string, detail: string): DomainError {
@@ -43,16 +48,17 @@ export class WhatsAppSender implements ChannelSender {
 
   constructor(private readonly credentials: ChannelCredentialsService) {}
 
-  async isConfigured(): Promise<boolean> {
-    return (await this.credentials.whatsapp()) !== null;
+  async isConfigured(accountId?: string | null): Promise<boolean> {
+    return (await this.credentials.whatsapp(accountId)) !== null;
   }
 
   async send(
     recipient: string,
     content: OutboundContent,
+    accountId?: string | null,
   ): Promise<{ externalMessageId: string }> {
     const env = loadEnv();
-    const creds = await this.credentials.whatsapp();
+    const creds = await this.credentials.whatsapp(accountId);
     if (!creds) throw notConfigured('whatsapp');
     const to = recipient.replace(/^\+/, '');
 
@@ -110,16 +116,17 @@ export class TelegramSender implements ChannelSender {
 
   constructor(private readonly credentials: ChannelCredentialsService) {}
 
-  async isConfigured(): Promise<boolean> {
-    return (await this.credentials.telegram()) !== null;
+  async isConfigured(accountId?: string | null): Promise<boolean> {
+    return (await this.credentials.telegram(accountId)) !== null;
   }
 
   async send(
     recipient: string,
     content: OutboundContent,
+    accountId?: string | null,
   ): Promise<{ externalMessageId: string }> {
     const env = loadEnv();
-    const creds = await this.credentials.telegram();
+    const creds = await this.credentials.telegram(accountId);
     if (!creds) throw notConfigured('telegram');
     const response = await fetch(
       `${env.TELEGRAM_API_BASE_URL}/bot${creds.bot_token}/sendMessage`,
@@ -152,16 +159,17 @@ abstract class MetaSendApiSender implements ChannelSender {
 
   constructor(protected readonly credentials: ChannelCredentialsService) {}
 
-  async isConfigured(): Promise<boolean> {
-    return (await this.credentials.metaPage()) !== null;
+  async isConfigured(accountId?: string | null): Promise<boolean> {
+    return (await this.credentials.metaPage(accountId)) !== null;
   }
 
   async send(
     recipient: string,
     content: OutboundContent,
+    accountId?: string | null,
   ): Promise<{ externalMessageId: string }> {
     const env = loadEnv();
-    const creds = await this.credentials.metaPage();
+    const creds = await this.credentials.metaPage(accountId);
     if (!creds) throw notConfigured(this.channel);
     const response = await fetch(
       `${env.GRAPH_API_BASE_URL}/${creds.page_id}/messages?access_token=${creds.page_access_token}`,

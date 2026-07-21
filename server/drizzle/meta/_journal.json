@@ -64,6 +64,13 @@
       "when": 1784388683608,
       "tag": "0008_channel-credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784391683608,
+      "tag": "0009_multi-account-routing",
+      "breakpoints": true
     }
   ]
 }
