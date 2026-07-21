@@ -189,6 +189,78 @@ export const leads = pgTable(
   (t) => [index('leads_status').on(t.status)],
 );
 
+/**
+ * Diccionario de campos personalizados (custom-fields): una pareja de tablas
+ * por entidad (lead/person) con la misma forma, en vez de una sola con
+ * columna `entity` — así la FK hacia la entidad es real, no un chequeo a
+ * mano. `key` es inmutable tras crear (se desactiva, no se renombra), mismo
+ * patrón que los catálogos.
+ */
+const fieldDefinitionColumns = () => ({
+  id: uuid('id').primaryKey().defaultRandom(),
+  key: text('key').notNull().unique(),
+  label: text('label').notNull(),
+  /** text | number | boolean | select | date — validado en dominio, no enum PG. */
+  type: text('type').notNull(),
+  /** Opciones permitidas cuando type='select'; null para los demás tipos. */
+  options: jsonb('options').$type<string[] | null>(),
+  required: boolean('required').notNull().default(false),
+  active: boolean('active').notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+  ...timestamps,
+});
+
+export const leadFieldDefinitions = pgTable('lead_field_definitions', fieldDefinitionColumns());
+export const personFieldDefinitions = pgTable(
+  'person_field_definitions',
+  fieldDefinitionColumns(),
+);
+
+/**
+ * Valor de un campo personalizado con su evidencia (precursor del score
+ * auditable): `source` distingue quién lo puso; `evidenceText`/
+ * `evidenceMessageId` sustentan una escritura de la IA. Único por
+ * (definición, entidad): un valor vigente por campo.
+ */
+export const leadFieldValues = pgTable(
+  'lead_field_values',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    definitionId: uuid('definition_id')
+      .notNull()
+      .references(() => leadFieldDefinitions.id),
+    leadId: uuid('lead_id')
+      .notNull()
+      .references(() => leads.id, { onDelete: 'cascade' }),
+    value: jsonb('value').notNull(),
+    /** human | ai — un valor ai nunca pisa uno human (setValue lo garantiza). */
+    source: text('source').notNull().default('human'),
+    evidenceText: text('evidence_text'),
+    evidenceMessageId: uuid('evidence_message_id'),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('lead_field_values_definition_lead').on(t.definitionId, t.leadId)],
+);
+
+export const personFieldValues = pgTable(
+  'person_field_values',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    definitionId: uuid('definition_id')
+      .notNull()
+      .references(() => personFieldDefinitions.id),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => people.id, { onDelete: 'cascade' }),
+    value: jsonb('value').notNull(),
+    source: text('source').notNull().default('human'),
+    evidenceText: text('evidence_text'),
+    evidenceMessageId: uuid('evidence_message_id'),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('person_field_values_definition_person').on(t.definitionId, t.personId)],
+);
+
 export const campaigns = pgTable('campaigns', {
   id: uuid('id').primaryKey().defaultRandom(),
   /** Id de la campaña en Meta Marketing API (null para CSV/manual). */

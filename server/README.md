@@ -250,6 +250,7 @@ devuelven la lista completa.
 | Catálogos de dominio | CRUD en `/api/companies`, `/api/circuits`, `/api/vacancy-types`, `/api/lead-statuses` (`name` de dominio inmutable + `label` de UI + `active` + orden). Empresa/circuito/tipo/estado se validan contra estos catálogos (cache 60 s), nunca contra enums en código; sembrados desde los datos existentes |
 | Settings | `GET /api/settings` · `PUT /api/settings/:key` (claves registradas, ej. `conversation_inactivity_days`) |
 | Metas | `/api/goals` por periodo: `periodKind` (`weekly`\|`monthly`), empresa + tipo de operador + circuito opcional, única por combinación (duplicado → 409 `DUPLICATE_RESOURCE`) |
+| Campos personalizados | Diccionario: CRUD en `/api/lead-field-definitions` y `/api/person-field-definitions` (`key` inmutable, `select` exige `options`, DELETE referenciado → 409). Valores: `GET/PUT /api/leads/:id/custom-fields[/:key]` y `/api/people/:id/custom-fields[/:key]`, tipados por definición; el `PUT` público siempre guarda `source='human'` (ignora ese campo si viene en el body); cada valor lleva evidencia (`evidenceText`/`evidenceMessageId`) — base del futuro score auditable |
 | Bulk | `POST /api/operators/bulk` (upsert por `empNo`) · `POST /api/campaigns/bulk` (por `externalId` o `name`+`isoWeek`, `source=csv`) — responden `{created, updated}`, reimportar es no-op |
 
 Toda mutación por API emite su `domain_event` con `actor='user'` (auditable en el event log).

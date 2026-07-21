@@ -71,6 +71,13 @@
       "when": 1784391683608,
       "tag": "0009_multi-account-routing",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784478083608,
+      "tag": "0010_custom-fields",
+      "breakpoints": true
     }
   ]
 }
