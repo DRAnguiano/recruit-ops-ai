@@ -10,6 +10,6 @@ import { LeadsService } from './leads.service';
   imports: [SchedulesModule, CatalogModule],
   controllers: [LeadsController],
   providers: [LeadPipelineService, ClassificationRulesService, LeadsService],
-  exports: [LeadPipelineService],
+  exports: [LeadPipelineService, LeadsService],
 })
 export class LeadsModule {}

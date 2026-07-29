@@ -21,6 +21,7 @@ import {
   FileText,
   Download,
   RefreshCw,
+  MessagesSquare,
   BarChart3,
   Gauge
 } from 'lucide-react';
@@ -46,6 +47,7 @@ import {
   operatorToApiBulk,
   vacancyToApi,
 } from '../api/mappers';
+import { chatLeadToInbound, parseWhatsAppHistory } from '../api/whatsapp-history';
 import { parseMetaPautas } from '../api/meta-pautas';
 import { parseHcCapacity } from '../api/hc-capacity';
 
@@ -216,6 +218,70 @@ export default function ImportModule({
       setParseErrors(result.errors);
     }
     setLoading(null);
+  };
+
+  // Importar historial de WhatsApp (zip anidado por reclutadora → por conversación)
+  const [historyProgress, setHistoryProgress] = useState<string | null>(null);
+
+  const handleWhatsAppHistoryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permite reseleccionar el mismo archivo tras un error
+    if (!file) return;
+
+    setLoading('whatsapp-history');
+    setParseErrors([]);
+    setSuccessMsg(null);
+    setHistoryProgress('Descomprimiendo…');
+
+    try {
+      const { agent, chatLeads, skipped } = await parseWhatsAppHistory(file, settings);
+
+      const BATCH_SIZE = 25;
+      let messagesIngested = 0;
+      let duplicates = 0;
+      let leadsAssigned = 0;
+
+      for (let i = 0; i < chatLeads.length; i += BATCH_SIZE) {
+        const batch = chatLeads.slice(i, i + BATCH_SIZE);
+        const messages = batch.flatMap((cl) => chatLeadToInbound(cl));
+        if (messages.length === 0) continue;
+
+        setHistoryProgress(
+          `Importando ${Math.min(i + BATCH_SIZE, chatLeads.length)}/${chatLeads.length} conversaciones de ${agent}…`,
+        );
+        const res = await api<{
+          messagesReceived: number;
+          messagesIngested: number;
+          duplicates: number;
+          leadsAssigned: number;
+        }>('/api/import/whatsapp-history', {
+          method: 'POST',
+          body: JSON.stringify({ agent, messages }),
+        });
+        messagesIngested += res.messagesIngested;
+        duplicates += res.duplicates;
+        leadsAssigned += res.leadsAssigned;
+      }
+
+      setSuccessMsg(
+        `Historial de ${agent}: ${chatLeads.length} conversaciones procesadas` +
+          (skipped > 0 ? ` (${skipped} sin mensaje del candidato, omitidas)` : '') +
+          `, ${messagesIngested} mensajes nuevos ingeridos` +
+          (duplicates > 0 ? ` (${duplicates} ya existían)` : '') +
+          `, ${leadsAssigned} leads asignados a ${agent}.`,
+      );
+      await onRefreshAll();
+    } catch (err) {
+      setParseErrors([
+        {
+          fileName: file.name,
+          message: err instanceof ApiError ? err.message : 'No se pudo importar el historial',
+        },
+      ]);
+    } finally {
+      setLoading(null);
+      setHistoryProgress(null);
+    }
   };
 
   // Importar pautas de Meta (xlsx multi-hoja por reclutadora)
@@ -573,6 +639,47 @@ export default function ImportModule({
               />
             </label>
             {loading === 'campaigns' && <span className="text-[10px] font-mono text-purple-500 animate-pulse mt-1 block">Importando presupuestos...</span>}
+          </div>
+        </div>
+
+        {/* Card 4: Historial de WhatsApp (backfill, no compite con los canales en vivo) */}
+        <div className="metric-card p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="bg-emerald-50 text-emerald-600 p-2.5 rounded-xl border border-emerald-100">
+                <MessagesSquare size={20} />
+              </span>
+              <span className="text-[10px] bg-slate-100 font-mono text-slate-500 font-bold px-2 py-0.5 rounded">ZIP export</span>
+            </div>
+            <h3 className="font-bold text-slate-900 mt-4 text-sm">4. Historial de WhatsApp</h3>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              Backfill de chats exportados del dispositivo de una reclutadora (previos a los
+              canales conectados). Crea personas, conversaciones y leads con sus fechas reales.
+            </p>
+            <div className="mt-4 p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-[10px] text-slate-600 font-mono space-y-1">
+              <div className="font-bold text-slate-700 uppercase">Estructura esperada:</div>
+              <div>Chats [Reclutadora].zip → un .zip por conversación → un .txt cada uno</div>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <label className="border-2 border-dashed border-slate-200 hover:border-emerald-400 bg-slate-50 hover:bg-emerald-50/20 transition-all rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer">
+              <Upload className="text-slate-400 mb-2" size={24} />
+              <span className="text-xs font-semibold text-slate-700">Subir historial</span>
+              <span className="text-[10px] text-slate-400 mt-1">Suelte "Chats [Reclutadora].zip"</span>
+              <input
+                type="file"
+                accept=".zip"
+                onChange={(e) => void handleWhatsAppHistoryUpload(e)}
+                disabled={loading !== null}
+                className="hidden"
+              />
+            </label>
+            {loading === 'whatsapp-history' && (
+              <span className="text-[10px] font-mono text-emerald-600 animate-pulse mt-1 block">
+                {historyProgress ?? 'Procesando…'}
+              </span>
+            )}
           </div>
         </div>
 

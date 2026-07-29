@@ -254,6 +254,7 @@ devuelven la lista completa.
 | Bulk | `POST /api/operators/bulk` (upsert por `empNo`) · `POST /api/campaigns/bulk` (por `externalId` o `name`+`isoWeek`, `source=csv`) — responden `{created, updated}`, reimportar es no-op |
 | Pautas de Meta | `POST /api/import/meta-pautas` `{campaigns[]}` — carga las pautas exportadas de Meta Ads (una hoja por reclutadora, ya parseadas por la SPA) a `campaigns`; siembra el agente por nombre y liga cada campaña a su `targetAgentId` + rango de fechas + gasto USD + leads reportados; idempotente por `name`+`isoWeek` reutilizando `upsertCampaigns` |
 | Capacidad por circuito | `POST /api/import/hc-capacity` `{snapshotDate, circuits[]}` — upsert por circuito del snapshot de HC autorizado vs. real (hoja «HC 2026»); `deficit` = autorizado − real; idempotente. `GET /api/circuit-capacity` lista los circuitos ordenados por déficit desc |
+| Historial de WhatsApp | `POST /api/import/whatsapp-history` `{agent, messages[]}` — ingiere chats históricos (exportados de dispositivo, ya parseados por la SPA) reutilizando la ingestión idempotente de canales; siembra la reclutadora si no existe y le asigna los leads nuevos sin agente; nunca dispara el bot (conversaciones nacen en `attention_mode='human'`) |
 
 Toda mutación por API emite su `domain_event` con `actor='user'` (auditable en el event log).
 

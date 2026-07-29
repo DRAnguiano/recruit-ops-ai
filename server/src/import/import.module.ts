@@ -4,6 +4,7 @@ import { ChannelsModule } from '../channels/channels.module';
 import { LeadsModule } from '../leads/leads.module';
 import { HcCapacityController } from './hc-capacity.controller';
 import { MetaPautasController } from './meta-pautas.controller';
+import { WhatsappHistoryController } from './whatsapp-history.controller';
 
 /**
  * Cargas de datos administrativas: endpoints que ingieren datos históricos
@@ -12,6 +13,6 @@ import { MetaPautasController } from './meta-pautas.controller';
  */
 @Module({
   imports: [ChannelsModule, LeadsModule, CatalogModule],
-  controllers: [MetaPautasController, HcCapacityController],
+  controllers: [WhatsappHistoryController, MetaPautasController, HcCapacityController],
 })
 export class ImportModule {}
