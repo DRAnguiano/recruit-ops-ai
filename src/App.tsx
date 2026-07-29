@@ -40,7 +40,7 @@ import AdminView from './components/AdminView';
 import CustomFieldsPanel from './components/CustomFieldsPanel';
 
 // Tipos y capa de API (la app ya no usa IndexedDB: migrate-spa-to-api)
-import { CatalogEntry, ChatLead, Operator, MarketingCampaign, FleetData, MonthlyGoal, JobVacancy, WorkScheduleSettings } from './types';
+import { CatalogEntry, ChatLead, CircuitCapacity, Operator, MarketingCampaign, FleetData, MonthlyGoal, JobVacancy, WorkScheduleSettings } from './types';
 import { api, ApiError, fetchAllPages, mediaUrl } from './api/client';
 import {
   ApiAgent,
@@ -92,6 +92,7 @@ export default function App() {
   const [operators, setOperators] = useState<Operator[]>([]);
   const [campaigns, setCampaigns] = useState<MarketingCampaign[]>([]);
   const [fleet, setFleet] = useState<FleetData[]>([]);
+  const [circuitCapacity, setCircuitCapacity] = useState<CircuitCapacity[]>([]);
   const [goals, setGoals] = useState<MonthlyGoal[]>([]);
   const [allGoals, setAllGoals] = useState<ApiGoal[]>([]);
   const [vacancies, setVacancies] = useState<JobVacancy[]>([]);
@@ -158,6 +159,7 @@ export default function App() {
         apiCompanies,
         apiCircuits,
         apiVacancyTypes,
+        apiCircuitCapacity,
       ] = await Promise.all([
         api<ApiAgent[]>('/api/agents'),
         fetchAllPages<ApiLead>('/api/leads'),
@@ -171,6 +173,7 @@ export default function App() {
         api<CatalogEntry[]>('/api/companies'),
         api<CatalogEntry[]>('/api/circuits'),
         api<CatalogEntry[]>('/api/vacancy-types'),
+        api<CircuitCapacity[]>('/api/circuit-capacity'),
       ]);
 
       const agentNames = new Map(apiAgents.map((a) => [a.id, a.name]));
@@ -184,6 +187,7 @@ export default function App() {
       setOperators(apiOperators.map(mapOperator));
       setCampaigns(apiCampaigns.map((c) => mapCampaign(c, agentNames)));
       setFleet(apiFleet.map(mapFleet));
+      setCircuitCapacity(apiCircuitCapacity);
       // La vista de capacidad opera sobre metas mensuales; todas las metas
       // por periodo (incluidas semanales) se administran en AdminView.
       setAllGoals(apiGoals);
@@ -1413,6 +1417,75 @@ export default function App() {
                       </div>
                     ))}
                   </div>
+                </div>
+              </div>
+
+              {/* Capacidad por circuito (HC 2026): autorizado vs. real → déficit */}
+              <div className="metric-card overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900">Capacidad Operativa por Circuito (HC)</h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      HC autorizado vs. real por circuito. El déficit marca dónde faltan operadores
+                      {circuitCapacity[0]?.snapshotDate ? ` (snapshot ${circuitCapacity[0].snapshotDate}).` : '.'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-orange-600 font-mono">
+                      {circuitCapacity.reduce((a, c) => a + Math.max(0, c.deficit), 0)}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-semibold uppercase">Déficit total</div>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-100">
+                        <th className="p-3">Circuito</th>
+                        <th className="p-3 text-center">Unidades</th>
+                        <th className="p-3 text-center">Activas</th>
+                        <th className="p-3 text-center">HC Autorizado</th>
+                        <th className="p-3 text-center">HC Real</th>
+                        <th className="p-3 text-center">Déficit</th>
+                        <th className="p-3">Cobertura</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {[...circuitCapacity]
+                        .sort((a, b) => b.deficit - a.deficit)
+                        .map((c) => {
+                          const coverage = c.hcAuthorized > 0 ? (c.hcReal / c.hcAuthorized) * 100 : 100;
+                          const short = c.deficit > 0;
+                          return (
+                            <tr key={c.id} className={`hover:bg-slate-50/50 ${short ? 'bg-red-50/30' : ''}`}>
+                              <td className="p-3 font-semibold text-slate-800">{c.circuit}</td>
+                              <td className="p-3 text-center font-mono text-slate-500">{c.units}</td>
+                              <td className="p-3 text-center font-mono text-slate-500">{c.unitsActive}</td>
+                              <td className="p-3 text-center font-mono text-slate-700">{c.hcAuthorized}</td>
+                              <td className="p-3 text-center font-mono text-slate-700">{c.hcReal}</td>
+                              <td className="p-3 text-center">
+                                <span className={`px-2 py-0.5 rounded font-mono font-bold text-[11px] ${
+                                  short ? 'bg-red-100 text-red-700' : 'bg-green-50 text-green-700'
+                                }`}>
+                                  {short ? `-${c.deficit}` : '✓ 0'}
+                                </span>
+                              </td>
+                              <td className="p-3 w-40">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-2 flex-1 bg-slate-100 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full transition-all ${short ? 'bg-red-400' : 'bg-green-500'}`}
+                                      style={{ width: `${Math.min(100, coverage)}%` }}
+                                    />
+                                  </div>
+                                  <span className="font-mono text-[10px] text-slate-500 w-9 text-right">{coverage.toFixed(0)}%</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>

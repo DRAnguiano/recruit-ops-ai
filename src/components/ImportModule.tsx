@@ -21,7 +21,8 @@ import {
   FileText,
   Download,
   RefreshCw,
-  BarChart3
+  BarChart3,
+  Gauge
 } from 'lucide-react';
 import {
   ChatLead,
@@ -46,6 +47,7 @@ import {
   vacancyToApi,
 } from '../api/mappers';
 import { parseMetaPautas } from '../api/meta-pautas';
+import { parseHcCapacity } from '../api/hc-capacity';
 
 interface ImportModuleProps {
   agents: string[];
@@ -245,6 +247,41 @@ export default function ImportModule({
     } catch (err) {
       setParseErrors([
         { fileName: file.name, message: err instanceof ApiError ? err.message : 'No se pudieron importar las pautas' },
+      ]);
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  // Importar snapshot de capacidad por circuito (hoja HC 2026)
+  const handleHcCapacityUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setLoading('hc-capacity');
+    setParseErrors([]);
+    setSuccessMsg(null);
+
+    try {
+      const { snapshotDate, circuits, errors } = await parseHcCapacity(file);
+      if (circuits.length > 0) {
+        const res = await api<{ created: number; updated: number }>('/api/import/hc-capacity', {
+          method: 'POST',
+          body: JSON.stringify({ snapshotDate, circuits }),
+        });
+        setSuccessMsg(
+          `Capacidad por circuito (snapshot ${snapshotDate ?? 's/f'}): ${res.created} circuitos nuevos, ` +
+            `${res.updated} actualizados.`,
+        );
+        await onRefreshAll();
+      } else {
+        setParseErrors([{ fileName: file.name, message: 'No se encontraron circuitos en la hoja HC 2026.' }]);
+      }
+      if (errors.length > 0) setParseErrors((prev) => [...prev, ...errors]);
+    } catch (err) {
+      setParseErrors([
+        { fileName: file.name, message: err instanceof ApiError ? err.message : 'No se pudo importar la capacidad' },
       ]);
     } finally {
       setLoading(null);
@@ -575,6 +612,47 @@ export default function ImportModule({
             {loading === 'meta-pautas' && (
               <span className="text-[10px] font-mono text-sky-600 animate-pulse mt-1 block">
                 Importando pautas de Meta…
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Card 6: Capacidad por circuito (hoja HC 2026 del reporte semanal) */}
+        <div className="metric-card p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="bg-blue-50 text-blue-600 p-2.5 rounded-xl border border-blue-100">
+                <Gauge size={20} />
+              </span>
+              <span className="text-[10px] bg-slate-100 font-mono text-slate-500 font-bold px-2 py-0.5 rounded">Hoja HC 2026</span>
+            </div>
+            <h3 className="font-bold text-slate-900 mt-4 text-sm">6. Capacidad Operativa (HC)</h3>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              Snapshot de dotación por circuito del reporte semanal. Carga HC autorizado vs. real
+              para ver el déficit por circuito — dónde faltan operadores.
+            </p>
+            <div className="mt-4 p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-[10px] text-slate-600 font-mono space-y-1">
+              <div className="font-bold text-slate-700 uppercase">Se toma:</div>
+              <div>La hoja «HC 2026» · el snapshot con la fecha más reciente</div>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <label className="border-2 border-dashed border-slate-200 hover:border-blue-400 bg-slate-50 hover:bg-blue-50/20 transition-all rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer">
+              <Upload className="text-slate-400 mb-2" size={24} />
+              <span className="text-xs font-semibold text-slate-700">Subir reporte HC</span>
+              <span className="text-[10px] text-slate-400 mt-1">Suelte el .xlsx del reporte semanal</span>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={(e) => void handleHcCapacityUpload(e)}
+                disabled={loading !== null}
+                className="hidden"
+              />
+            </label>
+            {loading === 'hc-capacity' && (
+              <span className="text-[10px] font-mono text-blue-600 animate-pulse mt-1 block">
+                Leyendo capacidad por circuito…
               </span>
             )}
           </div>

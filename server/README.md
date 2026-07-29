@@ -253,6 +253,7 @@ devuelven la lista completa.
 | Campos personalizados | Diccionario: CRUD en `/api/lead-field-definitions` y `/api/person-field-definitions` (`key` inmutable, `select` exige `options`, DELETE referenciado → 409). Valores: `GET/PUT /api/leads/:id/custom-fields[/:key]` y `/api/people/:id/custom-fields[/:key]`, tipados por definición; el `PUT` público siempre guarda `source='human'` (ignora ese campo si viene en el body); cada valor lleva evidencia (`evidenceText`/`evidenceMessageId`) — base del futuro score auditable |
 | Bulk | `POST /api/operators/bulk` (upsert por `empNo`) · `POST /api/campaigns/bulk` (por `externalId` o `name`+`isoWeek`, `source=csv`) — responden `{created, updated}`, reimportar es no-op |
 | Pautas de Meta | `POST /api/import/meta-pautas` `{campaigns[]}` — carga las pautas exportadas de Meta Ads (una hoja por reclutadora, ya parseadas por la SPA) a `campaigns`; siembra el agente por nombre y liga cada campaña a su `targetAgentId` + rango de fechas + gasto USD + leads reportados; idempotente por `name`+`isoWeek` reutilizando `upsertCampaigns` |
+| Capacidad por circuito | `POST /api/import/hc-capacity` `{snapshotDate, circuits[]}` — upsert por circuito del snapshot de HC autorizado vs. real (hoja «HC 2026»); `deficit` = autorizado − real; idempotente. `GET /api/circuit-capacity` lista los circuitos ordenados por déficit desc |
 
 Toda mutación por API emite su `domain_event` con `actor='user'` (auditable en el event log).
 

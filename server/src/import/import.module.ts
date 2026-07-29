@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CatalogModule } from '../catalog/catalog.module';
 import { ChannelsModule } from '../channels/channels.module';
 import { LeadsModule } from '../leads/leads.module';
+import { HcCapacityController } from './hc-capacity.controller';
 import { MetaPautasController } from './meta-pautas.controller';
 
 /**
@@ -11,6 +12,6 @@ import { MetaPautasController } from './meta-pautas.controller';
  */
 @Module({
   imports: [ChannelsModule, LeadsModule, CatalogModule],
-  controllers: [MetaPautasController],
+  controllers: [MetaPautasController, HcCapacityController],
 })
 export class ImportModule {}

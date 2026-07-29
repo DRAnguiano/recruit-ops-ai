@@ -78,6 +78,13 @@
       "when": 1784478083608,
       "tag": "0010_custom-fields",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784564483608,
+      "tag": "0011_circuit-capacity",
+      "breakpoints": true
     }
   ]
 }

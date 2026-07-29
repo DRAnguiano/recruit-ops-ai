@@ -124,6 +124,22 @@ export interface FleetData {
   serviciosActivos: number;
 }
 
+/**
+ * Snapshot de capacidad de dotación por circuito (add-operational-capacity):
+ * HC autorizado vs. real → déficit, tal como lo devuelve `/api/circuit-capacity`.
+ */
+export interface CircuitCapacity {
+  id: string;
+  circuit: string;
+  units: number;
+  unitsInMaintenance: number;
+  unitsActive: number;
+  hcAuthorized: number;
+  hcReal: number;
+  deficit: number;
+  snapshotDate: string | null;
+}
+
 export interface MonthlyGoal {
   id: string; // company + "_" + vacanteType
   company: string;
