@@ -56,6 +56,13 @@ export class LeadsController {
     return this.leads.recalculateScheduleMetrics();
   }
 
+  // Cruce por teléfono candidato↔operador (add-automatic-phone-attribution). Ruta estática antes
+  // de las basadas en :id para que no la capture el patrón de parámetro.
+  @Post('auto-attribute-by-phone')
+  autoAttributeByPhone() {
+    return this.leads.autoAttributeByPhone();
+  }
+
   @Get(':id')
   getById(@Param('id', uuidParam()) id: string) {
     return this.leads.getById(id);

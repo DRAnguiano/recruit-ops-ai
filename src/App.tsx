@@ -138,6 +138,7 @@ export default function App() {
   const [manualMatchLeadPhone, setManualMatchLeadPhone] = useState<string>('');
   const [manualMatchOperatorId, setManualMatchOperatorId] = useState<string>('');
   const [attributionStatusMsg, setAttributionStatusMsg] = useState<string | null>(null);
+  const [autoAttributing, setAutoAttributing] = useState(false);
 
   // Carga inicial desde la API del backend (fuente de verdad)
   useEffect(() => {
@@ -335,6 +336,33 @@ export default function App() {
       setAttributionStatusMsg(
         err instanceof ApiError ? err.message : 'No se pudo vincular la atribución',
       );
+    }
+  };
+
+  // Cruce automático por teléfono (add-automatic-phone-attribution): solo aplica matches
+  // unívocos candidato↔operador; reporta ambigüedades sin decidirlas.
+  const handleAutoAttributeByPhone = async () => {
+    setAutoAttributing(true);
+    try {
+      const result = await api<{
+        linked: number;
+        ambiguous: { phone: string; leadIds: string[]; operatorIds: string[] }[];
+      }>('/api/leads/auto-attribute-by-phone', { method: 'POST' });
+
+      if (result.linked > 0) await loadAllFromApi();
+
+      const parts = [`${result.linked} candidato(s) vinculado(s) por teléfono.`];
+      if (result.ambiguous.length > 0) {
+        parts.push(`${result.ambiguous.length} teléfono(s) ambiguo(s) sin aplicar (revisión manual).`);
+      }
+      setAttributionStatusMsg(parts.join(' '));
+      setTimeout(() => setAttributionStatusMsg(null), 5000);
+    } catch (err) {
+      setAttributionStatusMsg(
+        err instanceof ApiError ? err.message : 'No se pudo ejecutar el cruce por teléfono',
+      );
+    } finally {
+      setAutoAttributing(false);
     }
   };
 
@@ -1254,6 +1282,15 @@ export default function App() {
                       Realizar Atribución
                     </button>
                   </form>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleAutoAttributeByPhone()}
+                    disabled={autoAttributing}
+                    className="w-full mt-3 bg-white hover:bg-slate-50 disabled:opacity-40 text-slate-700 font-semibold text-xs py-2.5 rounded-lg border border-slate-200 transition"
+                  >
+                    {autoAttributing ? 'Cruzando…' : 'Cruzar por teléfono'}
+                  </button>
                 </div>
 
                 {/* Gráfica de ingresos por semana */}

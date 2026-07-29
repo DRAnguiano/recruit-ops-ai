@@ -1,7 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, gte, lt, lte, or, sql, SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lt, lte, or, sql, SQL } from 'drizzle-orm';
 import { DB, Database } from '../database/database.module';
-import { agents, campaigns, leads, operators, people } from '../database/schema';
+import {
+  agents,
+  campaigns,
+  channelIdentities,
+  employmentEpisodes,
+  leads,
+  operators,
+  people,
+} from '../database/schema';
 import { notFound } from '../common/domain-error';
 import { decodeCursor, Page, toPage } from '../common/pagination';
 import { DomainEventsService } from '../events/domain-events.service';
@@ -253,6 +261,80 @@ export class LeadsService {
     }
 
     return this.getById(id);
+  }
+
+  /**
+   * Cruce por teléfono (últimos 10 dígitos) entre candidatos de WhatsApp sin operador vinculado y
+   * operadores sin episodio atribuido. `normalized_phones` del operador ya fusiona celular
+   * empresa/personal/pareja al importar el directorio, así que el match de familiar entra aquí
+   * igual que cualquier otro. Solo se aplica cuando es unívoco (1 candidato ↔ 1 operador); si un
+   * teléfono resuelve a más de un candidato o más de un operador, se reporta sin decidir (regla §2:
+   * el sistema no adivina). Reejecutable: candidatos/operadores ya vinculados quedan excluidos.
+   */
+  async autoAttributeByPhone(): Promise<{
+    linked: number;
+    ambiguous: { phone: string; leadIds: string[]; operatorIds: string[] }[];
+  }> {
+    const last10 = (raw: string) => raw.replace(/\D/g, '').slice(-10);
+
+    const candidateRows = await this.db
+      .select({ leadId: leads.id, externalId: channelIdentities.externalId })
+      .from(leads)
+      .innerJoin(
+        channelIdentities,
+        and(eq(channelIdentities.personId, leads.personId), eq(channelIdentities.channel, 'whatsapp')),
+      )
+      .where(isNull(leads.matchedOperatorId));
+
+    const leadsByPhone = new Map<string, string[]>();
+    for (const row of candidateRows) {
+      const phone = last10(row.externalId);
+      if (phone.length !== 10) continue;
+      const arr = leadsByPhone.get(phone) ?? [];
+      arr.push(row.leadId);
+      leadsByPhone.set(phone, arr);
+    }
+
+    // Operador "sin vincular" = su episodio (si existe) todavía no tiene lead atribuido.
+    const operatorRows = await this.db
+      .select({
+        operatorId: operators.id,
+        normalizedPhones: operators.normalizedPhones,
+        episodeLeadId: employmentEpisodes.leadId,
+      })
+      .from(operators)
+      .leftJoin(employmentEpisodes, eq(employmentEpisodes.operatorId, operators.id));
+
+    const operatorsByPhone = new Map<string, string[]>();
+    for (const row of operatorRows) {
+      if (row.episodeLeadId) continue;
+      for (const raw of row.normalizedPhones) {
+        const phone = last10(raw);
+        if (phone.length !== 10) continue;
+        const arr = operatorsByPhone.get(phone) ?? [];
+        if (!arr.includes(row.operatorId)) arr.push(row.operatorId);
+        operatorsByPhone.set(phone, arr);
+      }
+    }
+
+    let linked = 0;
+    const ambiguous: { phone: string; leadIds: string[]; operatorIds: string[] }[] = [];
+
+    for (const [phone, leadIds] of leadsByPhone) {
+      const operatorIds = operatorsByPhone.get(phone);
+      if (!operatorIds) continue;
+      const [leadId] = leadIds;
+      const [operatorId] = operatorIds;
+      if (leadIds.length === 1 && operatorIds.length === 1 && leadId && operatorId) {
+        await this.linkOperator(leadId, operatorId);
+        await this.update(leadId, { status: 'hired' });
+        linked += 1;
+      } else {
+        ambiguous.push({ phone, leadIds, operatorIds });
+      }
+    }
+
+    return { linked, ambiguous };
   }
 
   private selection() {
