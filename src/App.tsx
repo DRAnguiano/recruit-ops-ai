@@ -1333,8 +1333,20 @@ export default function App() {
           {/* ================= TAB 4: CAPACIDAD Y METAS ================= */}
           {activeTab === 'capacity' && (
             <div className="space-y-8 animate-in fade-in duration-150">
-              
-              {/* KPIs de Flota */}
+
+              {/* Empty-state de la pestaña: solo cuando NADA tiene datos (distingue sin-datos de cero real) */}
+              {fleet.length === 0 && goalsProgressData.length === 0 && circuitCapacity.length === 0 && (
+                <div className="metric-card p-10 text-center">
+                  <h3 className="font-bold text-sm text-slate-900">Sin datos de capacidad todavía</h3>
+                  <p className="text-[12px] text-slate-500 mt-1.5 max-w-md mx-auto">
+                    Carga el reporte HC 2026 (capacidad por circuito) o el directorio de operadores en
+                    «Cargar datos», o define metas mensuales en Administración, para ver esta vista.
+                  </p>
+                </div>
+              )}
+
+              {/* KPIs de Flota (solo con datos de flota) */}
+              {fleet.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 {fleet.map(f => {
                   const companyOps = operators.filter(op => op.company.toLowerCase() === f.company.toLowerCase() && op.status === 'Activo').length;
@@ -1369,11 +1381,14 @@ export default function App() {
                   </div>
                 </div>
               </div>
+              )}
 
-              {/* Charts & Goals */}
+              {/* Charts & Goals (cada uno se muestra solo si tiene datos) */}
+              {(fleet.length > 0 || goalsProgressData.length > 0) && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                
-                {/* Gráfica de barras de capacidad */}
+
+                {/* Gráfica de barras de capacidad (solo con flota) */}
+                {fleet.length > 0 && (
                 <div className="lg:col-span-2 metric-card p-6 flex flex-col justify-between">
                   <div>
                     <h3 className="font-bold text-sm text-slate-900">Capacidad Operativa y Disponibilidad de Flota</h3>
@@ -1395,8 +1410,10 @@ export default function App() {
                     </ResponsiveContainer>
                   </div>
                 </div>
+                )}
 
-                {/* Avance contra metas mensuales */}
+                {/* Avance contra metas mensuales (solo con metas cargadas) */}
+                {goalsProgressData.length > 0 && (
                 <div className="metric-card p-6">
                   <h3 className="font-bold text-sm text-slate-900">Avance de Reclutamiento contra Metas Mensuales</h3>
                   <p className="text-[11px] text-slate-500 mt-0.5">Avance contra la meta del mes de Julio 2026.</p>
@@ -1418,9 +1435,12 @@ export default function App() {
                     ))}
                   </div>
                 </div>
+                )}
               </div>
+              )}
 
               {/* Capacidad por circuito (HC 2026): autorizado vs. real → déficit */}
+              {circuitCapacity.length > 0 && (
               <div className="metric-card overflow-hidden">
                 <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                   <div>
@@ -1488,6 +1508,7 @@ export default function App() {
                   </table>
                 </div>
               </div>
+              )}
             </div>
           )}
 
