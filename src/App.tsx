@@ -40,7 +40,7 @@ import AdminView from './components/AdminView';
 import CustomFieldsPanel from './components/CustomFieldsPanel';
 
 // Tipos y capa de API (la app ya no usa IndexedDB: migrate-spa-to-api)
-import { CatalogEntry, ChatLead, CircuitCapacity, Operator, MarketingCampaign, FleetData, MonthlyGoal, JobVacancy, WorkScheduleSettings } from './types';
+import { CatalogEntry, ChatLead, CircuitCapacity, EmploymentEpisode, Operator, MarketingCampaign, FleetData, MonthlyGoal, JobVacancy, WorkScheduleSettings } from './types';
 import { api, ApiError, fetchAllPages, mediaUrl } from './api/client';
 import {
   ApiAgent,
@@ -93,6 +93,7 @@ export default function App() {
   const [campaigns, setCampaigns] = useState<MarketingCampaign[]>([]);
   const [fleet, setFleet] = useState<FleetData[]>([]);
   const [circuitCapacity, setCircuitCapacity] = useState<CircuitCapacity[]>([]);
+  const [employmentEpisodes, setEmploymentEpisodes] = useState<EmploymentEpisode[]>([]);
   const [goals, setGoals] = useState<MonthlyGoal[]>([]);
   const [allGoals, setAllGoals] = useState<ApiGoal[]>([]);
   const [vacancies, setVacancies] = useState<JobVacancy[]>([]);
@@ -160,6 +161,7 @@ export default function App() {
         apiCircuits,
         apiVacancyTypes,
         apiCircuitCapacity,
+        apiEmploymentEpisodes,
       ] = await Promise.all([
         api<ApiAgent[]>('/api/agents'),
         fetchAllPages<ApiLead>('/api/leads'),
@@ -174,6 +176,7 @@ export default function App() {
         api<CatalogEntry[]>('/api/circuits'),
         api<CatalogEntry[]>('/api/vacancy-types'),
         api<CircuitCapacity[]>('/api/circuit-capacity'),
+        api<EmploymentEpisode[]>('/api/employment-episodes'),
       ]);
 
       const agentNames = new Map(apiAgents.map((a) => [a.id, a.name]));
@@ -188,6 +191,7 @@ export default function App() {
       setCampaigns(apiCampaigns.map((c) => mapCampaign(c, agentNames)));
       setFleet(apiFleet.map(mapFleet));
       setCircuitCapacity(apiCircuitCapacity);
+      setEmploymentEpisodes(apiEmploymentEpisodes);
       // La vista de capacidad opera sobre metas mensuales; todas las metas
       // por periodo (incluidas semanales) se administran en AdminView.
       setAllGoals(apiGoals);
@@ -1327,6 +1331,59 @@ export default function App() {
                   </table>
                 </div>
               </div>
+
+              {/* Registro de contrataciones (inmutable): snapshot congelado al contratar —
+                  reclutador y campaña no cambian aunque el lead se reasigne después. */}
+              {employmentEpisodes.length > 0 && (
+                <div className="metric-card overflow-hidden">
+                  <div className="p-6 border-b border-slate-100">
+                    <h3 className="font-bold text-sm text-slate-900">Registro de contrataciones (inmutable)</h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Quién contrató, cuándo y bajo qué campaña — fijado al momento de la contratación; no cambia con reasignaciones posteriores.
+                    </p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-100">
+                          <th className="p-3">Operador</th>
+                          <th className="p-3"># Emp</th>
+                          <th className="p-3">Fecha de Ingreso</th>
+                          <th className="p-3">Reclutador que Contrató</th>
+                          <th className="p-3">Campaña</th>
+                          <th className="p-3">Tipo</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {employmentEpisodes.map((ep) => (
+                          <tr key={ep.id} className="hover:bg-slate-50/50">
+                            <td className="p-3 font-semibold text-slate-900">{ep.operatorName}</td>
+                            <td className="p-3 font-mono font-bold">{ep.operatorEmpNo}</td>
+                            <td className="p-3 text-slate-500">{ep.hireDate ?? '—'}</td>
+                            <td className="p-3 text-slate-700 font-medium">
+                              {ep.hiredByAgentName ?? <span className="text-slate-400 italic">Sin atribución</span>}
+                            </td>
+                            <td className="p-3 text-slate-700">
+                              {ep.campaignName ?? <span className="text-slate-400 italic">Sin atribución</span>}
+                            </td>
+                            <td className="p-3">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                  ep.episodeType === 'rehire'
+                                    ? 'bg-blue-50 text-blue-700 border-blue-100'
+                                    : 'bg-green-50 text-green-700 border-green-100'
+                                }`}
+                              >
+                                {ep.episodeType === 'rehire' ? 'Reingreso' : 'Nueva'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

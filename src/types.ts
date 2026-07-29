@@ -140,6 +140,22 @@ export interface CircuitCapacity {
   snapshotDate: string | null;
 }
 
+/**
+ * Registro inmutable de contratación (add-employment-episode-hire-record): un episodio por
+ * operador, con snapshot de reclutador que contrató y campaña atribuida. `hiredByAgentName`/
+ * `campaignName` son null cuando el operador no tuvo un candidato casado (sin atribución inventada).
+ */
+export interface EmploymentEpisode {
+  id: string;
+  operatorId: string;
+  operatorEmpNo: string;
+  operatorName: string;
+  hireDate: string | null;
+  episodeType: 'new' | 'rehire';
+  hiredByAgentName: string | null;
+  campaignName: string | null;
+}
+
 export interface MonthlyGoal {
   id: string; // company + "_" + vacanteType
   company: string;

@@ -6,6 +6,7 @@ import { ChannelsModule } from './channels/channels.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { DatabaseModule } from './database/database.module';
+import { EmploymentEpisodesModule } from './employment-episodes/employment-episodes.module';
 import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { ImportModule } from './import/import.module';
@@ -28,6 +29,7 @@ import { SettingsModule } from './settings/settings.module';
     BotModule,
     CustomFieldsModule,
     ImportModule,
+    EmploymentEpisodesModule,
   ],
 })
 export class AppModule {}

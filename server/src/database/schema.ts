@@ -325,6 +325,31 @@ export const operators = pgTable('operators', {
   ...timestamps,
 });
 
+/**
+ * Registro inmutable de cada contratación (employment-episodes): un episodio por operador, con
+ * snapshot de quién contrató, cuándo y bajo qué campaña. Los campos de atribución se fijan una vez
+ * (nunca se sobrescriben desde código) — es la base del ciclo de vida laboral (contratación → baja →
+ * reingreso).
+ */
+export const employmentEpisodes = pgTable('employment_episodes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  operatorId: uuid('operator_id')
+    .notNull()
+    .unique()
+    .references(() => operators.id),
+  personId: uuid('person_id').references(() => people.id),
+  leadId: uuid('lead_id').references(() => leads.id),
+  /** Reclutador que contrató (snapshot; no sigue reasignaciones posteriores del lead). */
+  hiredByAgentId: uuid('hired_by_agent_id').references(() => agents.id),
+  /** Campaña atribuida (snapshot). */
+  campaignId: uuid('campaign_id').references(() => campaigns.id),
+  hireDate: date('hire_date'),
+  /** new | rehire */
+  episodeType: text('episode_type').notNull().default('new'),
+  snapshotAt: timestamp('snapshot_at', { withTimezone: true }).notNull().defaultNow(),
+  ...timestamps,
+});
+
 export const fleet = pgTable('fleet', {
   id: uuid('id').primaryKey().defaultRandom(),
   company: text('company').notNull().unique(),
@@ -332,6 +357,26 @@ export const fleet = pgTable('fleet', {
   tractorsInService: integer('tractors_in_service').notNull().default(0),
   tractorsWithoutOperator: integer('tractors_without_operator').notNull().default(0),
   activeServices: integer('active_services').notNull().default(0),
+  ...timestamps,
+});
+
+/**
+ * Snapshot de capacidad de dotación por circuito (operational-capacity): HC
+ * autorizado vs. real → déficit, importado de la hoja «HC 2026». Único por
+ * circuito (una foto vigente); el nombre del circuito es el del reporte, sin
+ * FK al catálogo `circuits` (sus nombres no coinciden — decisión de diseño).
+ */
+export const circuitCapacity = pgTable('circuit_capacity', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  circuit: text('circuit').notNull().unique(),
+  units: integer('units').notNull().default(0),
+  unitsInMaintenance: integer('units_in_maintenance').notNull().default(0),
+  unitsActive: integer('units_active').notNull().default(0),
+  hcAuthorized: integer('hc_authorized').notNull().default(0),
+  hcReal: integer('hc_real').notNull().default(0),
+  /** Siempre calculado hcAuthorized − hcReal (más robusto que confiar en la columna DIF). */
+  deficit: integer('deficit').notNull().default(0),
+  snapshotDate: date('snapshot_date'),
   ...timestamps,
 });
 

@@ -5,6 +5,7 @@ import { agents, campaigns, leads, operators, people } from '../database/schema'
 import { notFound } from '../common/domain-error';
 import { decodeCursor, Page, toPage } from '../common/pagination';
 import { DomainEventsService } from '../events/domain-events.service';
+import { EmploymentEpisodesService } from '../employment-episodes/employment-episodes.service';
 import { SchedulesService } from '../schedules/schedules.service';
 import { getLocalParts, isInWorkHours } from '../schedules/work-hours';
 
@@ -65,6 +66,7 @@ export class LeadsService {
     @Inject(DB) private readonly db: Database,
     private readonly events: DomainEventsService,
     private readonly schedules: SchedulesService,
+    private readonly episodes: EmploymentEpisodesService,
   ) {}
 
   /**
@@ -216,8 +218,9 @@ export class LeadsService {
   async linkOperator(id: string, operatorId: string | null): Promise<LeadView> {
     const current = (await this.findJoined(id)).lead;
 
+    let operator: typeof operators.$inferSelect | undefined;
     if (operatorId !== null) {
-      const operator = await this.db.query.operators.findFirst({
+      operator = await this.db.query.operators.findFirst({
         where: eq(operators.id, operatorId),
       });
       if (!operator) throw notFound('OPERATOR_NOT_FOUND', `No existe el operador ${operatorId}`);
@@ -236,6 +239,17 @@ export class LeadsService {
         actor: 'user',
         payload: { operatorId, previousOperatorId: current.matchedOperatorId },
       });
+
+      // Abre/enriquece el episodio laboral inmutable de la contratación (snapshot de atribución).
+      if (operatorId !== null && operator) {
+        await this.episodes.ensureForOperator(operatorId, {
+          personId: current.personId,
+          leadId: id,
+          hiredByAgentId: current.assignedAgentId,
+          campaignId: current.campaignId,
+          hireDate: operator.hireDate,
+        });
+      }
     }
 
     return this.getById(id);
