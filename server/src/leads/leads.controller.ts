@@ -49,6 +49,13 @@ export class LeadsController {
     return this.leads.list(query);
   }
 
+  // Recalcula las métricas de jornada de los leads existentes contra el horario vigente.
+  // Ruta estática antes de las basadas en :id para que no la capture el patrón de parámetro.
+  @Post('recalculate-schedule-metrics')
+  recalculateScheduleMetrics() {
+    return this.leads.recalculateScheduleMetrics();
+  }
+
   @Get(':id')
   getById(@Param('id', uuidParam()) id: string) {
     return this.leads.getById(id);

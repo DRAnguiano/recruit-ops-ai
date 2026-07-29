@@ -160,8 +160,8 @@ export interface JobVacancy {
 export interface WorkScheduleSettings {
   id?: string; // uuid del work_schedule en el backend
   workDays: number[]; // e.g. [1, 2, 3, 4, 5] (Monday to Friday)
-  startTime: string; // "HH:MM" e.g. "07:45"
-  endTime: string; // "HH:MM" e.g. "17:10"
+  startTime: string; // "HH:MM" e.g. "07:30"
+  endTime: string; // "HH:MM" e.g. "17:30"
   timezone: string; // default "America/Mexico_City"
 }
 

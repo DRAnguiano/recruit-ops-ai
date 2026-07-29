@@ -8,8 +8,8 @@ const CACHE_TTL_MS = 60_000;
 
 const FALLBACK: WorkScheduleLike = {
   workDays: [1, 2, 3, 4, 5],
-  startTime: '07:45',
-  endTime: '17:10',
+  startTime: '07:30',
+  endTime: '17:30',
   timezone: 'America/Mexico_City',
 };
 

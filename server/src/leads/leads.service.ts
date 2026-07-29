@@ -5,6 +5,8 @@ import { agents, campaigns, leads, operators, people } from '../database/schema'
 import { notFound } from '../common/domain-error';
 import { decodeCursor, Page, toPage } from '../common/pagination';
 import { DomainEventsService } from '../events/domain-events.service';
+import { SchedulesService } from '../schedules/schedules.service';
+import { getLocalParts, isInWorkHours } from '../schedules/work-hours';
 
 export interface LeadListFilters {
   status?: string;
@@ -62,7 +64,60 @@ export class LeadsService {
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly events: DomainEventsService,
+    private readonly schedules: SchedulesService,
   ) {}
+
+  /**
+   * Recalcula las métricas de jornada derivadas (inWorkHours, arrivalHour, arrivalDay) de los
+   * leads existentes contra el work_schedule vigente, con la misma lógica que usa el pipeline al
+   * ingerir. Reutilizable cada vez que el horario oficial cambie. No toca firstMessageAt ni estado.
+   */
+  async recalculateScheduleMetrics(): Promise<{ scanned: number; updated: number }> {
+    const schedule = await this.schedules.getDefaultSchedule();
+    const rows = await this.db
+      .select({
+        id: leads.id,
+        firstMessageAt: leads.firstMessageAt,
+        inWorkHours: leads.inWorkHours,
+        arrivalHour: leads.arrivalHour,
+        arrivalDay: leads.arrivalDay,
+      })
+      .from(leads);
+
+    let updated = 0;
+    for (const row of rows) {
+      if (!row.firstMessageAt) continue; // leads sin primer mensaje quedan intactos
+      const local = getLocalParts(row.firstMessageAt, schedule.timezone);
+      const inWork = isInWorkHours(row.firstMessageAt, schedule);
+      if (
+        row.inWorkHours === inWork &&
+        row.arrivalHour === local.hour &&
+        row.arrivalDay === local.weekday
+      ) {
+        continue; // ya coincide con el horario vigente
+      }
+      await this.db
+        .update(leads)
+        .set({
+          inWorkHours: inWork,
+          arrivalHour: local.hour,
+          arrivalDay: local.weekday,
+          updatedAt: new Date(),
+        })
+        .where(eq(leads.id, row.id));
+      updated += 1;
+    }
+
+    await this.events.append({
+      type: 'lead.schedule_metrics_recalculated',
+      aggregateType: 'lead',
+      aggregateId: 'all',
+      actor: 'user',
+      payload: { scanned: rows.length, updated },
+    });
+
+    return { scanned: rows.length, updated };
+  }
 
   async list(filters: LeadListFilters): Promise<Page<LeadView>> {
     const conditions: (SQL | undefined)[] = [

@@ -225,6 +225,15 @@ En orden de dependencia (cada uno atómico, ~12-15 tareas máx.):
     ✅ (archivado 2026-07-21)
 12. *(F3)* `add-campaign-management`, `add-scoring`, `add-documents`, `add-followups`
 
+### Gaps/backlog detectados (candidatos a change futuro)
+
+- **Cálculo de `firstResponseMinutesNatural`/`firstResponseMinutesWork`**: las columnas existen
+  en `leads` pero el backend nunca las llena (siempre `null`). El pipeline solo calcula
+  `inWorkHours`/`arrivalHour`/`arrivalDay` al ingerir el primer mensaje; falta detectar la primera
+  respuesta del reclutador y medir tiempo natural + hábil (con `calculateWorkMinutes` contra el
+  `work_schedule` vigente). Gap preexistente, no introducido por la importación de historial.
+  Anotado durante `fix-branding-and-work-schedule` (2026-07-21).
+
 ## 11. Stack y convenciones
 
 - **Backend**: TypeScript + NestJS (monolito modular) · PostgreSQL · Redis + BullMQ ·

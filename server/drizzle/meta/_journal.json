@@ -85,6 +85,13 @@
       "when": 1784564483608,
       "tag": "0011_circuit-capacity",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784650883608,
+      "tag": "0012_fix-default-schedule",
+      "breakpoints": true
     }
   ]
 }
