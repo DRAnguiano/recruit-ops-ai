@@ -20,7 +20,8 @@ import {
   FolderOpen,
   FileText,
   Download,
-  RefreshCw
+  RefreshCw,
+  BarChart3
 } from 'lucide-react';
 import {
   ChatLead,
@@ -44,6 +45,7 @@ import {
   operatorToApiBulk,
   vacancyToApi,
 } from '../api/mappers';
+import { parseMetaPautas } from '../api/meta-pautas';
 
 interface ImportModuleProps {
   agents: string[];
@@ -212,6 +214,41 @@ export default function ImportModule({
       setParseErrors(result.errors);
     }
     setLoading(null);
+  };
+
+  // Importar pautas de Meta (xlsx multi-hoja por reclutadora)
+  const handleMetaPautasUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setLoading('meta-pautas');
+    setParseErrors([]);
+    setSuccessMsg(null);
+
+    try {
+      const { campaigns: pautas, errors } = await parseMetaPautas(file);
+      if (pautas.length > 0) {
+        const res = await api<{ created: number; updated: number }>('/api/import/meta-pautas', {
+          method: 'POST',
+          body: JSON.stringify({ campaigns: pautas }),
+        });
+        setSuccessMsg(
+          `Pautas de Meta: ${res.created} campañas nuevas, ${res.updated} actualizadas ` +
+            `(${pautas.length} filas en ${new Set(pautas.map((p) => p.agent)).size} reclutadoras).`,
+        );
+        await onRefreshAll();
+      } else {
+        setParseErrors([{ fileName: file.name, message: 'No se encontraron campañas en el archivo.' }]);
+      }
+      if (errors.length > 0) setParseErrors((prev) => [...prev, ...errors]);
+    } catch (err) {
+      setParseErrors([
+        { fileName: file.name, message: err instanceof ApiError ? err.message : 'No se pudieron importar las pautas' },
+      ]);
+    } finally {
+      setLoading(null);
+    }
   };
 
   // Manejo de Guardado Manual de Campaña
@@ -499,6 +536,47 @@ export default function ImportModule({
               />
             </label>
             {loading === 'campaigns' && <span className="text-[10px] font-mono text-purple-500 animate-pulse mt-1 block">Importando presupuestos...</span>}
+          </div>
+        </div>
+
+        {/* Card 5: Pautas de Meta (xlsx exportado de Ads Manager, una hoja por reclutadora) */}
+        <div className="metric-card p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="bg-sky-50 text-sky-600 p-2.5 rounded-xl border border-sky-100">
+                <BarChart3 size={20} />
+              </span>
+              <span className="text-[10px] bg-slate-100 font-mono text-slate-500 font-bold px-2 py-0.5 rounded">XLSX de Meta</span>
+            </div>
+            <h3 className="font-bold text-slate-900 mt-4 text-sm">5. Pautas de Meta Ads</h3>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              Export de Ads Manager (una hoja por reclutadora). Carga gasto, leads reportados y
+              rango de fechas por campaña, ligados a su agente para cruzar con los leads reales.
+            </p>
+            <div className="mt-4 p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-[10px] text-slate-600 font-mono space-y-1">
+              <div className="font-bold text-slate-700 uppercase">Columnas usadas:</div>
+              <div>Nombre · Inicio/Fin informe · Importe gastado (USD) · Contactos de mensajes</div>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <label className="border-2 border-dashed border-slate-200 hover:border-sky-400 bg-slate-50 hover:bg-sky-50/20 transition-all rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer">
+              <Upload className="text-slate-400 mb-2" size={24} />
+              <span className="text-xs font-semibold text-slate-700">Subir pautas</span>
+              <span className="text-[10px] text-slate-400 mt-1">Suelte el .xlsx de Meta</span>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={(e) => void handleMetaPautasUpload(e)}
+                disabled={loading !== null}
+                className="hidden"
+              />
+            </label>
+            {loading === 'meta-pautas' && (
+              <span className="text-[10px] font-mono text-sky-600 animate-pulse mt-1 block">
+                Importando pautas de Meta…
+              </span>
+            )}
           </div>
         </div>
       </div>

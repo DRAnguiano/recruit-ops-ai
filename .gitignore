@@ -10,3 +10,6 @@ coverage/
 storage/
 server/storage/
 server/media-storage/
+
+# Datos crudos con PII (chats, directorios, pautas) — nunca al repo
+/Cargar datos/

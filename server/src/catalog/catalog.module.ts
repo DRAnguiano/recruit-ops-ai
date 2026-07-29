@@ -28,6 +28,6 @@ import { SettingsController } from './settings.controller';
     CatalogValueService,
     BulkImportService,
   ],
-  exports: [CatalogValueService],
+  exports: [CatalogValueService, BulkImportService],
 })
 export class CatalogModule {}

@@ -12,7 +12,7 @@ export interface BulkResult {
 }
 
 type OperatorRow = z.infer<typeof operatorsBulkSchema>['items'][number];
-type CampaignRow = z.infer<typeof campaignsBulkSchema>['items'][number];
+export type CampaignRow = z.infer<typeof campaignsBulkSchema>['items'][number];
 
 /**
  * Imports que sobreviven de la SPA (Excel de operadores, CSV de campañas):

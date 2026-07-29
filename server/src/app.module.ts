@@ -8,6 +8,7 @@ import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { DatabaseModule } from './database/database.module';
 import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
+import { ImportModule } from './import/import.module';
 import { JobsModule } from './jobs/jobs.module';
 import { RedisModule } from './redis/redis.module';
 import { SettingsModule } from './settings/settings.module';
@@ -26,6 +27,7 @@ import { SettingsModule } from './settings/settings.module';
     CampaignsModule,
     BotModule,
     CustomFieldsModule,
+    ImportModule,
   ],
 })
 export class AppModule {}
