@@ -131,3 +131,37 @@ sobre la API, sincronización de campañas, bot-gateway y catálogos configurabl
 En curso hacia F3: gestión de campañas desde el CRM (condicionada a App Review de Meta), score
 auditable de candidatos, documentos y seguimientos. El backlog de gaps detectados se mantiene
 al final de `openspec/project.md`.
+
+## Interfaz
+
+<!-- CAPTURA: vista Resumen del periodo (Torre de Control) con métricas de campañas y contrataciones. -->
+<!-- CAPTURA: Bandeja de Leads con el visor de chat en vivo y el panel de datos extraídos con evidencia. -->
+<!-- CAPTURA: vista Administración mostrando catálogos y campos personalizados configurables sin código. -->
+
+## Qué construí
+
+El sistema completo, backend y frontend:
+
+- **Backend NestJS** — módulos de canales bajo un `ChannelAdapter` común, pipeline de leads con
+  clasificación determinista y deduplicación, cifrado de credenciales en base de datos,
+  sincronización con Meta Marketing API, `bot-gateway` con lock atómico para el handoff
+  bot ↔ humano, y el log append-only de `domain_events` que sirve de fuente a métricas y
+  auditoría.
+- **Modelo de datos** en PostgreSQL con Drizzle: episodios de contratación inmutables, ofertas
+  versionadas, snapshots de capacidad y el diccionario tipado de campos personalizados con
+  evidencia.
+- **SPA React 19** — las vistas de la Torre de Control, incluido el inbox en vivo por WebSocket.
+- **Las especificaciones**: cada capacidad descrita en `openspec/specs/` antes de existir en
+  código, con el contexto de producto y las decisiones de arquitectura en
+  [`openspec/project.md`](openspec/project.md).
+
+La decisión de la que más aprendí es la de la portada: **la IA nunca decide**. Es tentador
+dejar que el modelo mueva un candidato a "viable"; mantener al LLM en las entradas y salidas,
+y las decisiones en un motor determinista que evalúa configuración, es lo que hace el sistema
+auditable y adaptable a otra empresa sin tocar código.
+
+## Autor
+
+**David Ramos** — Data / AI Engineer
+
+[LinkedIn](https://www.linkedin.com/in/david-ramos-anguiano-3a647827a/) · david.24000@hotmail.com
