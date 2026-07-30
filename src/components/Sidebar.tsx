@@ -24,7 +24,7 @@ interface SidebarProps {
 
 export default function Sidebar({ activeTab, setActiveTab, leadsCount }: SidebarProps) {
   const menuItems = [
-    { id: 'funnel', name: 'Funnel de la Semana', icon: LayoutDashboard },
+    { id: 'funnel', name: 'Resumen del periodo', icon: LayoutDashboard },
     { id: 'leads', name: 'Bandeja de Leads (CRM)', icon: Users, badge: leadsCount },
     { id: 'attribution', name: 'Atribución y Contratos', icon: GitCompare },
     { id: 'capacity', name: 'Capacidad y Metas', icon: Target },

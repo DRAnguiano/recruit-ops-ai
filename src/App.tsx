@@ -823,14 +823,14 @@ export default function App() {
               {/* KPIs Principales */}
               <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6">
                 <KPICard
-                  title="Leads Facebook"
+                  title="Candidatos recibidos"
                   value={totalLeadsFB}
                   subtitle="Ingresados por campaña"
                   n={filteredLeadsForPeriod.length}
                   icon={<Megaphone size={16} className="text-blue-600" />}
                 />
                 <KPICard
-                  title="Tasa de Respuesta"
+                  title="Candidatos atendidos"
                   value={`${pctResponded.toFixed(1)}%`}
                   subtitle="Contestados por reclutadora"
                   n={respondedLeads.length}
@@ -846,21 +846,21 @@ export default function App() {
                   colorClass={medianResponseTimeWork < 30 ? 'text-green-600' : medianResponseTimeWork < 120 ? 'text-yellow-600' : 'text-red-600'}
                 />
                 <KPICard
-                  title="Conversaciones Reales"
+                  title="Conversaciones iniciadas"
                   value={realConversations}
                   subtitle="Interacción bidireccional"
                   n={filteredLeadsForPeriod.length}
                   icon={<MessageSquare size={16} className="text-purple-500" />}
                 />
                 <KPICard
-                  title="Ingresos (Contratos)"
+                  title="Operadores contratados"
                   value={hiringCount}
                   subtitle="Operadores en nómina"
                   n={filteredLeadsForPeriod.length}
                   icon={<CheckCircle2 size={16} className="text-green-500" />}
                 />
                 <KPICard
-                  title="Conversión Lead → Alta"
+                  title="Porcentaje de contratación"
                   value={`${estimatedConversion.toFixed(1)}%`}
                   subtitle="Efectividad del funnel"
                   n={filteredLeadsForPeriod.length}
