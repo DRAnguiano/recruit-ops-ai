@@ -4,6 +4,7 @@ import { ChannelsModule } from '../channels/channels.module';
 import { LeadsModule } from '../leads/leads.module';
 import { HcCapacityController } from './hc-capacity.controller';
 import { MetaPautasController } from './meta-pautas.controller';
+import { TerminationsController } from './terminations.controller';
 import { WhatsappHistoryController } from './whatsapp-history.controller';
 
 /**
@@ -13,6 +14,11 @@ import { WhatsappHistoryController } from './whatsapp-history.controller';
  */
 @Module({
   imports: [ChannelsModule, LeadsModule, CatalogModule],
-  controllers: [WhatsappHistoryController, MetaPautasController, HcCapacityController],
+  controllers: [
+    WhatsappHistoryController,
+    MetaPautasController,
+    HcCapacityController,
+    TerminationsController,
+  ],
 })
 export class ImportModule {}

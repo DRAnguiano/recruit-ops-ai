@@ -376,9 +376,44 @@ export const circuitCapacity = pgTable('circuit_capacity', {
   hcReal: integer('hc_real').notNull().default(0),
   /** Siempre calculado hcAuthorized − hcReal (más robusto que confiar en la columna DIF). */
   deficit: integer('deficit').notNull().default(0),
+  /** DIF crudo del reporte, sin calcular; solo para detectar divergencias con la fuente. */
+  sourceDeficit: integer('source_deficit'),
   snapshotDate: date('snapshot_date'),
   ...timestamps,
 });
+
+/**
+ * Bajas históricas importadas (employee-terminations): hechos crudos del reporte de RH, con
+ * vínculo opcional a un operador vigente. Única por (nombre normalizado, fecha de baja) para
+ * deduplicar el solape real entre hojas mensuales y semanales del reporte fuente.
+ */
+export const terminations = pgTable(
+  'terminations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    operatorId: uuid('operator_id').references(() => operators.id),
+    /** empNo | name — cómo se vinculó a `operatorId`, si se vinculó. */
+    matchedBy: text('matched_by'),
+    employeeNameRaw: text('employee_name_raw').notNull(),
+    employeeNameNormalized: text('employee_name_normalized').notNull(),
+    empNoRaw: text('emp_no_raw'),
+    circuit: text('circuit'),
+    hireDate: date('hire_date'),
+    terminationDate: date('termination_date').notNull(),
+    terminationType: text('termination_type'),
+    terminationTypeRaw: text('termination_type_raw'),
+    terminationCategory: text('termination_category'),
+    reasonShort: text('reason_short'),
+    reasonDetail: text('reason_detail'),
+    comment: text('comment'),
+    tenureDays: integer('tenure_days'),
+    sourceSheet: text('source_sheet').notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('terminations_name_date_unique').on(table.employeeNameNormalized, table.terminationDate),
+  ],
+);
 
 /**
  * Metas por periodo (configurable-catalogs): semanales o mensuales por

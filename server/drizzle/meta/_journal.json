@@ -99,6 +99,34 @@
       "when": 1784737283608,
       "tag": "0013_employment-episodes",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784823683608,
+      "tag": "0014_circuit-capacity-source-deficit",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1784910083608,
+      "tag": "0015_terminations",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784996483608,
+      "tag": "0016_campaign-offers",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1785082883608,
+      "tag": "0017_employment-episode-offer",
+      "breakpoints": true
     }
   ]
 }
