@@ -286,6 +286,53 @@ export const campaigns = pgTable('campaigns', {
   ...timestamps,
 });
 
+/**
+ * Oferta versionada por campaña (campaign-offers): borrador → publicación inmutable. Única por
+ * (campaignId, version); la vigente se deriva (mayor version con status='published'), nunca una
+ * bandera mutable.
+ */
+export const campaignOffers = pgTable(
+  'campaign_offers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    campaignId: uuid('campaign_id')
+      .notNull()
+      .references(() => campaigns.id),
+    version: integer('version').notNull(),
+    /** draft | published */
+    status: text('status').notNull().default('draft'),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    salaryText: text('salary_text'),
+    paymentForm: text('payment_form'),
+    bonuses: text('bonuses'),
+    benefits: text('benefits'),
+    perDiem: text('per_diem'),
+    restDays: text('rest_days'),
+    schedule: text('schedule'),
+    routeType: text('route_type'),
+    circuit: text('circuit'),
+    unitType: text('unit_type'),
+    vacancyType: text('vacancy_type'),
+    newUnits: boolean('new_units'),
+    unitCondition: text('unit_condition'),
+    maintenanceCulture: text('maintenance_culture'),
+    operatorCare: text('operator_care'),
+    safety: text('safety'),
+    stability: text('stability'),
+    familyMessage: text('family_message'),
+    substanceFreePolicy: boolean('substance_free_policy'),
+    requirements: text('requirements'),
+    location: text('location'),
+    adText: text('ad_text'),
+    creativeRef: text('creative_ref'),
+    cta: text('cta'),
+    validFrom: date('valid_from'),
+    validTo: date('valid_to'),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex('campaign_offers_campaign_version_unique').on(table.campaignId, table.version)],
+);
+
 export const jobVacancies = pgTable('job_vacancies', {
   id: uuid('id').primaryKey().defaultRandom(),
   /** sencillo | full | quinta_rueda | escuelita (catálogo configurable a futuro) */
@@ -343,6 +390,8 @@ export const employmentEpisodes = pgTable('employment_episodes', {
   hiredByAgentId: uuid('hired_by_agent_id').references(() => agents.id),
   /** Campaña atribuida (snapshot). */
   campaignId: uuid('campaign_id').references(() => campaigns.id),
+  /** Oferta de campaña vigente al momento de contratar (snapshot; add-hire-offer-attribution). */
+  offerVersionId: uuid('offer_version_id').references(() => campaignOffers.id),
   hireDate: date('hire_date'),
   /** new | rehire */
   episodeType: text('episode_type').notNull().default('new'),

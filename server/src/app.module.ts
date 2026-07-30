@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { BotModule } from './bot/bot.module';
+import { CampaignOffersModule } from './campaign-offers/campaign-offers.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { ChannelsModule } from './channels/channels.module';
@@ -26,6 +27,7 @@ import { SettingsModule } from './settings/settings.module';
     ConversationsModule,
     CatalogModule,
     CampaignsModule,
+    CampaignOffersModule,
     BotModule,
     CustomFieldsModule,
     ImportModule,
