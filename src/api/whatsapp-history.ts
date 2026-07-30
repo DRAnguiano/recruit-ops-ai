@@ -148,3 +148,28 @@ export function chatLeadToInbound(chatLead: ChatLead): HistoricalMessage[] {
     };
   });
 }
+
+export interface LeadMetric {
+  externalUserId: string;
+  responded: boolean;
+  firstResponseMinutesNatural: number | null;
+  firstResponseMinutesWork: number | null;
+}
+
+/**
+ * Métrica de primera respuesta del `ChatLead` (ya calculada por el parser desde los timestamps del
+ * reclutador). `externalUserId` se deriva igual que en `chatLeadToInbound` para casar con el lead
+ * creado por la ingestión. Devuelve `null` cuando el chat no produce candidato (sin métrica útil).
+ */
+export function chatLeadToMetric(chatLead: ChatLead): LeadMetric | null {
+  const candidateMessages = chatLead.messages.filter((m) => !m.isAgent && m.text.trim().length > 0);
+  if (candidateMessages.length === 0) return null;
+  const digits = digitsOf(candidateMessages[0].sender);
+  if (!digits) return null;
+  return {
+    externalUserId: digits,
+    responded: chatLead.responded,
+    firstResponseMinutesNatural: chatLead.firstResponseMinutesNatural,
+    firstResponseMinutesWork: chatLead.firstResponseMinutesWork,
+  };
+}

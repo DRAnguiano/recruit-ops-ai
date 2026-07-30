@@ -5,6 +5,7 @@ import { agents, channelIdentities, leads } from '../database/schema';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { NormalizedInboundMessage } from '../channels/channel-adapter';
 import { MessageIngestionService } from '../channels/message-ingestion.service';
+import { DomainEventsService } from '../events/domain-events.service';
 import { LeadsService } from '../leads/leads.service';
 import {
   WhatsappHistoryImport,
@@ -18,6 +19,7 @@ export interface WhatsappHistoryImportResult {
   messagesIngested: number;
   duplicates: number;
   leadsAssigned: number;
+  leadsMetricsApplied: number;
 }
 
 /**
@@ -34,6 +36,7 @@ export class WhatsappHistoryController {
     @Inject(DB) private readonly db: Database,
     private readonly ingestion: MessageIngestionService,
     private readonly leadsService: LeadsService,
+    private readonly events: DomainEventsService,
   ) {}
 
   @Post('whatsapp-history')
@@ -59,12 +62,65 @@ export class WhatsappHistoryController {
 
     const leadsAssigned = await this.assignAgentToNewLeads(inbound, agentId);
 
+    const leadsMetricsApplied = await this.applyFirstResponseMetrics(body.leadMetrics);
+
     return {
       messagesReceived: body.messages.length,
       messagesIngested: ingested.length,
       duplicates: body.messages.length - ingested.length,
       leadsAssigned,
+      leadsMetricsApplied,
     };
+  }
+
+  /**
+   * Persiste las métricas de primera respuesta (fuente: el export) en el lead de cada persona,
+   * localizado por `externalUserId` → channel_identity → person → lead. Se sobrescribe con el valor
+   * del export (autoridad del historial). Emite un evento de auditoría por lead actualizado.
+   */
+  private async applyFirstResponseMetrics(
+    metrics: WhatsappHistoryImport['leadMetrics'],
+  ): Promise<number> {
+    if (!metrics || metrics.length === 0) return 0;
+    let applied = 0;
+    for (const metric of metrics) {
+      const identity = await this.db.query.channelIdentities.findFirst({
+        where: and(
+          eq(channelIdentities.channel, 'whatsapp'),
+          eq(channelIdentities.externalId, metric.externalUserId),
+        ),
+      });
+      if (!identity) continue;
+
+      const lead = await this.db.query.leads.findFirst({
+        where: eq(leads.personId, identity.personId),
+      });
+      if (!lead) continue;
+
+      await this.db
+        .update(leads)
+        .set({
+          responded: metric.responded,
+          firstResponseMinutesNatural: metric.firstResponseMinutesNatural,
+          firstResponseMinutesWork: metric.firstResponseMinutesWork,
+          updatedAt: new Date(),
+        })
+        .where(eq(leads.id, lead.id));
+
+      await this.events.append({
+        type: 'lead.first_response_imported',
+        aggregateType: 'lead',
+        aggregateId: lead.id,
+        actor: 'user',
+        payload: {
+          source: 'whatsapp-history',
+          responded: metric.responded,
+          minutesWork: metric.firstResponseMinutesWork,
+        },
+      });
+      applied += 1;
+    }
+    return applied;
   }
 
   /** Busca por nombre (case-insensitive tras normalizar espacios); crea si no existe. */

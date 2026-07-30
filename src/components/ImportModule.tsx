@@ -47,7 +47,7 @@ import {
   operatorToApiBulk,
   vacancyToApi,
 } from '../api/mappers';
-import { chatLeadToInbound, parseWhatsAppHistory } from '../api/whatsapp-history';
+import { chatLeadToInbound, chatLeadToMetric, parseWhatsAppHistory } from '../api/whatsapp-history';
 import { parseMetaPautas } from '../api/meta-pautas';
 import { parseHcCapacity } from '../api/hc-capacity';
 
@@ -246,6 +246,11 @@ export default function ImportModule({
         const messages = batch.flatMap((cl) => chatLeadToInbound(cl));
         if (messages.length === 0) continue;
 
+        // Métricas de primera respuesta ya calculadas por el parser (fuente: el export).
+        const leadMetrics = batch
+          .map((cl) => chatLeadToMetric(cl))
+          .filter((m): m is NonNullable<typeof m> => m !== null);
+
         setHistoryProgress(
           `Importando ${Math.min(i + BATCH_SIZE, chatLeads.length)}/${chatLeads.length} conversaciones de ${agent}…`,
         );
@@ -254,9 +259,10 @@ export default function ImportModule({
           messagesIngested: number;
           duplicates: number;
           leadsAssigned: number;
+          leadsMetricsApplied: number;
         }>('/api/import/whatsapp-history', {
           method: 'POST',
-          body: JSON.stringify({ agent, messages }),
+          body: JSON.stringify({ agent, messages, leadMetrics }),
         });
         messagesIngested += res.messagesIngested;
         duplicates += res.duplicates;
