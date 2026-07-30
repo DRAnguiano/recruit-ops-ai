@@ -479,7 +479,7 @@ export default function ImportModule({
       <div className="metric-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Database className="text-orange-500" size={24} />
+            <Database className="text-blue-600" size={24} />
             Módulo de Administración y Datos
           </h2>
           <p className="text-xs text-slate-500 mt-1 max-w-xl">
@@ -558,7 +558,7 @@ export default function ImportModule({
                   placeholder="Agregar Reclutadora (+)"
                   value={newAgentName}
                   onChange={(e) => setNewAgentName(e.target.value)}
-                  className="flex-1 border border-slate-200 rounded-lg text-[11px] px-2 py-1 focus:ring-1 focus:ring-orange-500 focus:outline-none"
+                  className="flex-1 border border-slate-200 rounded-lg text-[11px] px-2 py-1 focus:ring-1 focus:ring-blue-600 focus:outline-none"
                 />
                 <button
                   type="button"
@@ -775,7 +775,7 @@ export default function ImportModule({
       {/* Secciones de Configuración Adicional y Formularios Manuales */}
       <div className="metric-card p-6 space-y-6">
         <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <Sliders className="text-orange-500" size={18} />
+          <Sliders className="text-blue-600" size={18} />
           Parámetros Manuales y Catálogos Operativos
         </h3>
 
@@ -1205,7 +1205,7 @@ export default function ImportModule({
       {(operatorPreview.length > 0 || campaignPreview.length > 0) && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
           <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-            <FolderOpen className="text-orange-500" size={18} />
+            <FolderOpen className="text-blue-600" size={18} />
             Vista Previa de Datos Cargados (Últimos archivos - Primeras 10 filas)
           </h3>
 

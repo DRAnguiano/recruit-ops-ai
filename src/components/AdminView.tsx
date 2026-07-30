@@ -690,7 +690,7 @@ function GoalsEditor({ goals, companies, circuits, vacancyTypes, onChanged }: Go
     <div className="metric-card overflow-hidden">
       <div className="p-4 border-b border-slate-100">
         <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-          <Target className="text-orange-500" size={16} />
+          <Target className="text-blue-600" size={16} />
           Metas por Periodo (Semanal / Mensual)
         </h3>
         <p className="text-[10px] text-slate-400 mt-0.5">
@@ -890,7 +890,7 @@ function SettingsEditor() {
   return (
     <div className="metric-card p-4">
       <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2 mb-1">
-        <Settings className="text-orange-500" size={16} />
+        <Settings className="text-blue-600" size={16} />
         Settings Operativos
       </h3>
       <p className="text-[10px] text-slate-400 mb-4">
@@ -972,7 +972,7 @@ function ScheduleEditor({ settings, onSaveSettings }: ScheduleEditorProps) {
   return (
     <div className="metric-card p-4">
       <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 mb-1">
-        <Clock className="text-orange-500" size={16} />
+        <Clock className="text-blue-600" size={16} />
         Jornada de Reclutamiento (Horario Hábil)
       </h3>
       <p className="text-[10px] text-slate-400 mb-4">
@@ -993,7 +993,7 @@ function ScheduleEditor({ settings, onSaveSettings }: ScheduleEditorProps) {
                   onClick={() => handleDayToggle(day.value)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
                     active
-                      ? 'bg-orange-500 text-slate-950 border-orange-600'
+                      ? 'bg-blue-600 text-white border-blue-700'
                       : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200'
                   }`}
                 >
@@ -1063,7 +1063,7 @@ export default function AdminView({
   return (
     <div className="space-y-8 animate-in fade-in duration-150 pb-12">
       <div className="flex items-center gap-2">
-        <BookMarked className="text-orange-500" size={18} />
+        <BookMarked className="text-blue-600" size={18} />
         <div>
           <h2 className="font-bold text-base text-slate-900">Administración de Catálogos y Configuración</h2>
           <p className="text-[11px] text-slate-500">
@@ -1113,17 +1113,34 @@ export default function AdminView({
       {/* Campos personalizados (diccionario de lead y persona) */}
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <SlidersHorizontal className="text-orange-500" size={16} />
+          <SlidersHorizontal className="text-blue-600" size={16} />
           <div>
             <h3 className="font-bold text-sm text-slate-900">Campos Personalizados</h3>
             <p className="text-[11px] text-slate-500">
-              Diccionario de datos capturables del candidato (lead) y de la persona; los valores
-              se llenan desde el visor de conversación. Base del score auditable.
+              Diccionario de datos capturables del candidato; los valores se llenan desde el
+              visor de conversación. Base del score auditable.
             </p>
           </div>
         </div>
-        <FieldDefinitionsTable entity="leads" title="Campos de Lead" />
-        <FieldDefinitionsTable entity="people" title="Campos de Persona" />
+
+        {/* Criterio de clasificación Lead vs Persona (evita confundir dónde va cada campo) */}
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-[11px] text-blue-900 space-y-1">
+          <p className="font-bold">¿En cuál lo defino? Pregúntate qué describe el dato:</p>
+          <p>
+            <span className="font-semibold">Campo de Persona</span> — un atributo del ser humano
+            que <span className="font-semibold">no cambia entre postulaciones</span> y se reutiliza
+            si vuelve a contactar (ej. edad, idioma, tipo de licencia de manejo).
+          </p>
+          <p>
+            <span className="font-semibold">Campo de Lead</span> — un dato de{' '}
+            <span className="font-semibold">esta postulación en concreto</span>, que no persiste
+            si la misma persona genera otro lead después (ej. vacante de interés, disponibilidad
+            para este turno, resultado de esta entrevista).
+          </p>
+        </div>
+
+        <FieldDefinitionsTable entity="people" title="Campos de Persona (atributos del individuo)" />
+        <FieldDefinitionsTable entity="leads" title="Campos de Lead (de esta postulación)" />
       </div>
 
       {/* Settings + horario */}

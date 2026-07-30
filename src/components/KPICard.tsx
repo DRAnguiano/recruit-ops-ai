@@ -11,7 +11,7 @@ interface KPICardProps {
   subtitle?: string;
   n?: number | string;
   icon?: React.ReactNode;
-  colorClass?: string; // e.g. text-orange-500, text-green-500
+  colorClass?: string; // e.g. text-blue-600, text-green-500
 }
 
 export default function KPICard({ title, value, subtitle, n, icon, colorClass = 'text-slate-900' }: KPICardProps) {

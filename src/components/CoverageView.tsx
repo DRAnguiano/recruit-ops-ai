@@ -66,7 +66,7 @@ export default function CoverageView({ settings, leads }: CoverageViewProps) {
       {/* Jornada vigente (editable desde Administración) */}
       <div className="metric-card p-6">
         <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 mb-1">
-          <Clock className="text-orange-500" size={18} />
+          <Clock className="text-blue-600" size={18} />
           Jornada de Reclutamiento Vigente
         </h3>
         <p className="text-[11px] text-slate-500">
@@ -79,7 +79,7 @@ export default function CoverageView({ settings, leads }: CoverageViewProps) {
               key={day.value}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
                 workDays.includes(day.value)
-                  ? 'bg-orange-500 text-slate-950 border-orange-600'
+                  ? 'bg-blue-600 text-white border-blue-700'
                   : 'bg-slate-50 text-slate-400 border-slate-200'
               }`}
             >
@@ -95,7 +95,7 @@ export default function CoverageView({ settings, leads }: CoverageViewProps) {
       {/* KPI Cards de Cobertura */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="metric-card p-5 flex items-start gap-4">
-          <span className="bg-orange-50 p-3 rounded-xl border border-orange-100 text-orange-600 shrink-0">
+          <span className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-blue-600 shrink-0">
             <Sun size={20} />
           </span>
           <div>
@@ -132,11 +132,11 @@ export default function CoverageView({ settings, leads }: CoverageViewProps) {
       <div className="metric-card p-6 overflow-hidden">
         <div>
           <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-            <CalendarDays className="text-orange-500" size={16} />
+            <CalendarDays className="text-blue-600" size={16} />
             Mapa de Calor de Arribo de Leads (Día × Hora de Entrada)
           </h3>
           <p className="text-[11px] text-slate-500 mt-0.5">
-            Las celdas con bordes punteados de color <strong className="font-semibold text-orange-500">Naranja</strong> representan el horario de jornada oficial. Las zonas oscuras son horarios donde se quema pauta publicitaria en horas inactivas.
+            Las celdas con bordes punteados de color <strong className="font-semibold text-blue-600">Azul</strong> representan el horario de jornada oficial. Las zonas oscuras son horarios donde se quema pauta publicitaria en horas inactivas.
           </p>
         </div>
 
@@ -178,10 +178,10 @@ export default function CoverageView({ settings, leads }: CoverageViewProps) {
                       const ratio = count / maxLeadsInCell;
                       let bgClass = 'bg-slate-50 text-slate-300';
                       if (count > 0) {
-                        if (ratio < 0.3) bgClass = 'bg-orange-100 text-orange-800';
-                        else if (ratio < 0.6) bgClass = 'bg-orange-200 text-orange-950';
-                        else if (ratio < 0.9) bgClass = 'bg-orange-400 text-slate-950';
-                        else bgClass = 'bg-orange-500 text-slate-950 font-bold';
+                        if (ratio < 0.3) bgClass = 'bg-blue-100 text-blue-800';
+                        else if (ratio < 0.6) bgClass = 'bg-blue-200 text-blue-950';
+                        else if (ratio < 0.9) bgClass = 'bg-blue-400 text-white';
+                        else bgClass = 'bg-blue-600 text-white font-bold';
                       }
 
                       return (
@@ -189,12 +189,12 @@ export default function CoverageView({ settings, leads }: CoverageViewProps) {
                           key={hour}
                           title={`${day.label} a las ${hour}:00 - ${count} lead(s) ${isInWork ? '(Durante Jornada)' : '(Fuera de Jornada)'}`}
                           className={`h-9 text-[10px] font-mono flex flex-col items-center justify-center rounded transition-all cursor-help relative ${bgClass} ${
-                            isInWork ? 'border-2 border-orange-500/40' : 'border border-slate-200/50'
+                            isInWork ? 'border-2 border-blue-600/40' : 'border border-slate-200/50'
                           }`}
                         >
                           {count > 0 && <span>{count}</span>}
                           {isInWork && count === 0 && (
-                            <span className="w-1 h-1 rounded-full bg-orange-300 absolute" />
+                            <span className="w-1 h-1 rounded-full bg-blue-400 absolute" />
                           )}
                         </div>
                       );
@@ -213,23 +213,23 @@ export default function CoverageView({ settings, leads }: CoverageViewProps) {
             <span>Inactivo (0 leads)</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-4 h-4 bg-orange-100 rounded" />
+            <span className="w-4 h-4 bg-blue-100 rounded" />
             <span>Volumen Bajo</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-4 h-4 bg-orange-200 rounded" />
+            <span className="w-4 h-4 bg-blue-200 rounded" />
             <span>Volumen Medio</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-4 h-4 bg-orange-400 rounded" />
+            <span className="w-4 h-4 bg-blue-400 rounded" />
             <span>Volumen Alto</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-4 h-4 bg-orange-500 rounded" />
+            <span className="w-4 h-4 bg-blue-600 rounded" />
             <span>Pico de Tráfico</span>
           </div>
           <div className="flex items-center gap-1.5 ml-4">
-            <span className="w-4 h-4 border-2 border-orange-500 rounded" />
+            <span className="w-4 h-4 border-2 border-blue-600 rounded" />
             <span>Shift / Jornada Laboral</span>
           </div>
         </div>

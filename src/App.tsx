@@ -33,6 +33,7 @@ import {
 // Subcomponentes modularizados
 import Sidebar from './components/Sidebar';
 import KPICard from './components/KPICard';
+import WeeklyFunnel from './components/WeeklyFunnel';
 import CampaignsView from './components/CampaignsView';
 import CoverageView from './components/CoverageView';
 import ImportModule from './components/ImportModule';
@@ -586,7 +587,7 @@ export default function App() {
   const barChartData = getStackedBarChartData();
 
   // Colores para apilar agentes
-  const agentColors = ['#0f172a', '#f97316', '#3b82f6', '#10b981', '#a855f7', '#ec4899'];
+  const agentColors = ['#2563EB', '#0f172a', '#14b8a6', '#a855f7', '#ec4899', '#10b981'];
 
   // ================= PROCESAMIENTO MÓDULO: LEADS CRM =================
   const filteredCRMLeads = leads.filter(l => {
@@ -782,7 +783,7 @@ export default function App() {
         {/* Header Global */}
         <header className="h-16 bg-white border-b border-slate-200/80 flex items-center justify-between px-8 shrink-0 z-10">
           <div className="flex items-center gap-3">
-            <span className="text-xs font-mono font-bold uppercase bg-orange-100 text-orange-600 px-2 py-0.5 rounded">
+            <span className="text-xs font-mono font-bold uppercase bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
               MODO OPERATIVO
             </span>
             <div className="text-xs text-slate-400 font-mono">
@@ -826,7 +827,7 @@ export default function App() {
                   value={totalLeadsFB}
                   subtitle="Ingresados por campaña"
                   n={filteredLeadsForPeriod.length}
-                  icon={<Megaphone size={16} className="text-orange-500" />}
+                  icon={<Megaphone size={16} className="text-blue-600" />}
                 />
                 <KPICard
                   title="Tasa de Respuesta"
@@ -863,9 +864,21 @@ export default function App() {
                   value={`${estimatedConversion.toFixed(1)}%`}
                   subtitle="Efectividad del funnel"
                   n={filteredLeadsForPeriod.length}
-                  icon={<TrendingUp size={16} className="text-orange-500" />}
+                  icon={<TrendingUp size={16} className="text-blue-600" />}
                 />
               </div>
+
+              {/* Embudo por etapas del periodo (solo señales que existen; se desploma en
+                  Contestados/Contratados si aún no hay dato — fiel, no inventado). Las etapas de
+                  perfilamiento (perfilado/apto) se sumarán aquí cuando exista el campo. */}
+              <WeeklyFunnel
+                stages={[
+                  { label: 'Candidatos recibidos', value: filteredLeadsForPeriod.length, hint: 'periodo' },
+                  { label: 'Conversaciones iniciadas', value: realConversations, hint: 'bidireccional' },
+                  { label: 'Candidatos atendidos', value: respondedLeads.length, hint: 'por reclutadora' },
+                  { label: 'Operadores contratados', value: hiringCount, hint: 'status = hired' },
+                ]}
+              />
 
               {/* Grid Central: Tabla de Reclutamiento & Stacked Chart */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -997,7 +1010,7 @@ export default function App() {
                   <div className="flex gap-4 overflow-x-auto mt-4 pb-2 scrollbar-thin">
                     {activePipelineLeads.slice(0, 6).map((lead) => (
                       <div
-                        key={lead.phone}
+                        key={lead.id ?? lead.phone}
                         onClick={() => void openChatViewer(lead)}
                         className="bg-slate-50 hover:bg-orange-50/25 transition cursor-pointer border border-slate-200/60 rounded-xl p-3 shrink-0 w-52 flex flex-col justify-between"
                       >
@@ -1034,7 +1047,7 @@ export default function App() {
                       placeholder="Buscar por teléfono, agente, notas, vacante..."
                       value={leadSearch}
                       onChange={(e) => setLeadSearch(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 text-xs border border-slate-200 rounded-xl focus:ring-1 focus:ring-orange-500 focus:outline-none"
+                      className="w-full pl-10 pr-4 py-2 text-xs border border-slate-200 rounded-xl focus:ring-1 focus:ring-blue-600 focus:outline-none"
                     />
                   </div>
 
@@ -1107,12 +1120,12 @@ export default function App() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filteredCRMLeads.map((lead) => (
-                        <tr key={lead.phone} className="hover:bg-slate-50/40">
+                        <tr key={lead.id ?? lead.phone} className="hover:bg-slate-50/40">
                           <td className="p-3 text-center">
                             <button
                               onClick={() => void openChatViewer(lead)}
                               title="Ver conversación completa de WhatsApp"
-                              className="text-orange-500 hover:text-orange-600 bg-orange-50 p-2 rounded-lg border border-orange-100 transition inline-block cursor-pointer"
+                              className="text-blue-600 hover:text-blue-700 bg-blue-50 p-2 rounded-lg border border-blue-100 transition inline-block cursor-pointer"
                             >
                               <MessageSquare size={14} />
                             </button>
@@ -1149,7 +1162,7 @@ export default function App() {
                               {lead.classification}
                             </span>
                           </td>
-                          <td className="p-3 font-semibold text-orange-600">{lead.detectedVacante}</td>
+                          <td className="p-3 font-semibold text-blue-700">{lead.detectedVacante}</td>
                           <td className="p-3">
                             <select
                               value={lead.statusName}
@@ -1230,7 +1243,7 @@ export default function App() {
                 <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
                   <div>
                     <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                      <UserPlus className="text-orange-500" size={16} />
+                      <UserPlus className="text-blue-600" size={16} />
                       Vincular candidato con operador contratado
                     </h3>
                     <p className="text-[11px] text-slate-500 mt-0.5">Vincula un candidato de WhatsApp con un operador ya contratado cuando sus teléfonos no coinciden.</p>
@@ -1306,7 +1319,7 @@ export default function App() {
                         <XAxis dataKey="week" stroke="#94a3b8" fontSize={10} tickLine={false} />
                         <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} />
                         <Tooltip contentStyle={{ fontSize: '11px', borderRadius: '8px' }} />
-                        <Line type="monotone" dataKey="Ingresos" stroke="#f97316" strokeWidth={3} activeDot={{ r: 8 }} />
+                        <Line type="monotone" dataKey="Ingresos" stroke="#2563EB" strokeWidth={3} activeDot={{ r: 8 }} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -1497,7 +1510,7 @@ export default function App() {
                         <Tooltip contentStyle={{ fontSize: '11px', borderRadius: '8px' }} />
                         <Legend iconSize={8} iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
                         <Bar dataKey="Tractos en Servicio" fill="#0f172a" radius={[3, 3, 0, 0]} />
-                        <Bar dataKey="Operadores Activos" fill="#f97316" radius={[3, 3, 0, 0]} />
+                        <Bar dataKey="Operadores Activos" fill="#14b8a6" radius={[3, 3, 0, 0]} />
                         <Bar dataKey="Servicios Activos" fill="#3b82f6" radius={[3, 3, 0, 0]} />
                         <Bar dataKey="Déficit" fill="#ef4444" radius={[3, 3, 0, 0]} />
                       </BarChart>
@@ -1521,7 +1534,7 @@ export default function App() {
                         </div>
                         <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-orange-500 transition-all rounded-full"
+                            className="h-full bg-blue-600 transition-all rounded-full"
                             style={{ width: `${g.progressPct}%` }}
                           />
                         </div>
@@ -1669,7 +1682,7 @@ export default function App() {
             {/* Header del chat */}
             <div className="p-6 border-b border-slate-100 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="bg-orange-500 text-slate-950 font-bold p-2.5 rounded-full flex items-center justify-center font-mono text-sm w-10 h-10">
+                <div className="bg-blue-600 text-white font-bold p-2.5 rounded-full flex items-center justify-center font-mono text-sm w-10 h-10">
                   {activeChatLead.agent[0]}
                 </div>
                 <div>
@@ -1693,7 +1706,7 @@ export default function App() {
               </div>
               <div>
                 <span className="text-slate-400 font-bold block uppercase tracking-tight text-[9px]">Vacante Detectada</span>
-                <span className="text-orange-600 font-bold">{activeChatLead.detectedVacante}</span>
+                <span className="text-blue-700 font-bold">{activeChatLead.detectedVacante}</span>
               </div>
               <div>
                 <span className="text-slate-400 font-bold block uppercase tracking-tight text-[9px]">Clasificación</span>
@@ -1701,7 +1714,7 @@ export default function App() {
               </div>
               <div>
                 <span className="text-slate-400 font-bold block uppercase tracking-tight text-[9px]">Estatus de Reclutamiento</span>
-                <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold text-[10px]">{activeChatLead.status}</span>
+                <span className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-bold text-[10px]">{activeChatLead.status}</span>
               </div>
             </div>
 
@@ -1783,12 +1796,12 @@ export default function App() {
                         if (e.key === 'Enter') void handleSendMessage();
                       }}
                       placeholder={`Responder por ${activeSendTarget.conversation.channel}…`}
-                      className="flex-1 text-xs border border-slate-200 rounded-lg p-2 focus:ring-1 focus:ring-orange-500 focus:outline-none"
+                      className="flex-1 text-xs border border-slate-200 rounded-lg p-2 focus:ring-1 focus:ring-blue-600 focus:outline-none"
                     />
                     <button
                       onClick={() => void handleSendMessage()}
                       disabled={sending || !composerText.trim()}
-                      className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white text-xs font-bold px-4 rounded-lg cursor-pointer"
+                      className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold px-4 rounded-lg cursor-pointer"
                     >
                       {sending ? '…' : 'Enviar'}
                     </button>
@@ -1814,7 +1827,7 @@ export default function App() {
                 placeholder="Añade observaciones para que persistan en el mini-CRM..."
                 defaultValue={activeChatLead.notes}
                 onBlur={(e) => handleLeadNotesChange(activeChatLead.phone, e.target.value)}
-                className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:ring-1 focus:ring-orange-500 focus:outline-none"
+                className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:ring-1 focus:ring-blue-600 focus:outline-none"
               />
             </div>
           </div>

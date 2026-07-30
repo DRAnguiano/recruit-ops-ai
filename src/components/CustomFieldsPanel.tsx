@@ -128,7 +128,7 @@ export default function CustomFieldsPanel({ leadId, personId }: CustomFieldsPane
           <div key={`${row.entity}:${row.field.key}`}>
             <label className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 uppercase mb-1">
               {row.field.label}
-              {row.field.required && <span className="text-orange-500">*</span>}
+              {row.field.required && <span className="text-red-500">*</span>}
               {row.field.source === 'ai' && (
                 <span className="flex items-center gap-0.5 bg-violet-50 text-violet-600 border border-violet-200 px-1 py-0.5 rounded text-[8px] font-bold normal-case">
                   <Sparkles size={9} /> IA

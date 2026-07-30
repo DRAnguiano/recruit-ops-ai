@@ -38,7 +38,7 @@ export default function Sidebar({ activeTab, setActiveTab, leadsCount }: Sidebar
     <aside className="w-64 bg-navy-850 text-slate-100 flex flex-col border-r border-navy-900/55">
       {/* Header Logístico */}
       <div className="p-6 border-b border-navy-900/55 flex items-center gap-3">
-        <div className="bg-tm-orange p-2 rounded-lg text-white font-bold flex items-center justify-center">
+        <div className="bg-white p-2 rounded-lg text-blue-600 font-bold flex items-center justify-center shadow-sm">
           <Truck size={20} />
         </div>
         <div>
@@ -58,13 +58,13 @@ export default function Sidebar({ activeTab, setActiveTab, leadsCount }: Sidebar
               onClick={() => setActiveTab(item.id)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all duration-150 group text-left ${
                 isActive
-                  ? 'bg-tm-orange text-white font-semibold shadow-md'
+                  ? 'bg-white text-navy-900 font-semibold shadow-md'
                   : 'text-slate-400 hover:bg-navy-800 hover:text-slate-100'
               }`}
             >
               <Icon
                 size={16}
-                className={isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}
+                className={isActive ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-200'}
               />
               <span className="flex-1">{item.name}</span>
               {item.badge !== undefined && item.badge > 0 && (
@@ -85,7 +85,7 @@ export default function Sidebar({ activeTab, setActiveTab, leadsCount }: Sidebar
       <div className="p-4 border-t border-navy-900/55 bg-navy-900/40 text-[10px] text-slate-500 font-mono flex flex-col gap-1">
         <div>ZONA: America/Mexico_City</div>
         <div>OPERACIÓN: Activa 24/7</div>
-        <div className="text-tm-orange/90 mt-1 font-semibold">Transmontes S.A. de C.V.</div>
+        <div className="text-white mt-1 font-semibold">Transmontes S.A. de C.V.</div>
       </div>
     </aside>
 
