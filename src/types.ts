@@ -156,6 +156,52 @@ export interface EmploymentEpisode {
   campaignName: string | null;
 }
 
+/**
+ * Contenido de la oferta que se promete al candidato (add-campaign-offers). Todo opcional: una
+ * campaña puede tener la oferta a medio capturar mientras está en borrador.
+ */
+export interface CampaignOfferContent {
+  salaryText: string | null;
+  paymentForm: string | null;
+  bonuses: string | null;
+  benefits: string | null;
+  perDiem: string | null;
+  restDays: string | null;
+  schedule: string | null;
+  routeType: string | null;
+  circuit: string | null;
+  unitType: string | null;
+  vacancyType: string | null;
+  newUnits: boolean | null;
+  unitCondition: string | null;
+  maintenanceCulture: string | null;
+  operatorCare: string | null;
+  safety: string | null;
+  stability: string | null;
+  familyMessage: string | null;
+  substanceFreePolicy: boolean | null;
+  requirements: string | null;
+  location: string | null;
+  adText: string | null;
+  creativeRef: string | null;
+  cta: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+}
+
+/**
+ * Oferta versionada de una campaña: borrador → publicación inmutable. `isCurrent` lo deriva el
+ * backend (mayor `version` publicada), nunca es una bandera editable.
+ */
+export interface CampaignOffer extends CampaignOfferContent {
+  id: string;
+  campaignId: string;
+  version: number;
+  status: 'draft' | 'published';
+  publishedAt: string | null;
+  isCurrent: boolean;
+}
+
 export interface MonthlyGoal {
   id: string; // company + "_" + vacanteType
   company: string;
