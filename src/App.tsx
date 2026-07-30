@@ -314,7 +314,7 @@ export default function App() {
     const targetLead = leads.find((l) => l.phone === manualMatchLeadPhone);
     const targetOperator = operators.find((o) => o.empNo === manualMatchOperatorId);
     if (!targetLead?.id || !targetOperator?.id) {
-      setAttributionStatusMsg('No se encontró el lead u operador seleccionado.');
+      setAttributionStatusMsg('No se encontró el candidato u operador seleccionado.');
       return;
     }
 
@@ -328,13 +328,13 @@ export default function App() {
         body: JSON.stringify({ status: 'hired' }),
       });
       applyLeadFromApi(hired ?? linked);
-      setAttributionStatusMsg('¡Atribución manual vinculada con éxito!');
+      setAttributionStatusMsg('¡Candidato vinculado al operador con éxito!');
       setManualMatchLeadPhone('');
       setManualMatchOperatorId('');
       setTimeout(() => setAttributionStatusMsg(null), 3000);
     } catch (err) {
       setAttributionStatusMsg(
-        err instanceof ApiError ? err.message : 'No se pudo vincular la atribución',
+        err instanceof ApiError ? err.message : 'No se pudo vincular el candidato',
       );
     }
   };
@@ -1231,9 +1231,9 @@ export default function App() {
                   <div>
                     <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                       <UserPlus className="text-orange-500" size={16} />
-                      Asociación Manual de Candidatos
+                      Vincular candidato con operador contratado
                     </h3>
-                    <p className="text-[11px] text-slate-500 mt-0.5">Asocia un lead de WhatsApp a un operador contratado si no coinciden sus teléfonos.</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Vincula un candidato de WhatsApp con un operador ya contratado cuando sus teléfonos no coinciden.</p>
                   </div>
 
                   {attributionStatusMsg && (
@@ -1244,13 +1244,13 @@ export default function App() {
 
                   <form onSubmit={handleManualMatchSubmit} className="mt-4 space-y-4">
                     <div>
-                      <label className="text-[10px] font-bold text-slate-600 uppercase">Seleccione Lead de WhatsApp:</label>
+                      <label className="text-[10px] font-bold text-slate-600 uppercase">Candidato de WhatsApp:</label>
                       <select
                         value={manualMatchLeadPhone}
                         onChange={(e) => setManualMatchLeadPhone(e.target.value)}
                         className="w-full border border-slate-200 rounded-lg p-2 text-xs mt-1 bg-slate-50 font-medium"
                       >
-                        <option value="">-- Seleccionar Prospecto --</option>
+                        <option value="">-- Seleccionar candidato --</option>
                         {unlinkedLeads.map(l => (
                           <option key={l.phone} value={l.phone}>
                             {l.phone} - {l.agent} ({l.detectedVacante})
@@ -1260,13 +1260,13 @@ export default function App() {
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-bold text-slate-600 uppercase">Vincular con Operador Contratado:</label>
+                      <label className="text-[10px] font-bold text-slate-600 uppercase">Operador contratado:</label>
                       <select
                         value={manualMatchOperatorId}
                         onChange={(e) => setManualMatchOperatorId(e.target.value)}
                         className="w-full border border-slate-200 rounded-lg p-2 text-xs mt-1 bg-slate-50 font-medium"
                       >
-                        <option value="">-- Seleccionar Operador --</option>
+                        <option value="">-- Seleccionar operador --</option>
                         {unlinkedOperators.map(op => (
                           <option key={op.empNo} value={op.empNo}>
                             [{op.empNo}] {op.name} ({op.company})
@@ -1279,7 +1279,7 @@ export default function App() {
                       type="submit"
                       className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs py-2.5 rounded-lg transition"
                     >
-                      Realizar Atribución
+                      Vincular candidato
                     </button>
                   </form>
 
