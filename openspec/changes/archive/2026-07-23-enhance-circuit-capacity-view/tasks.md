@@ -18,9 +18,9 @@
 
 ## 3. Tabla de capacidad por circuito (src/App.tsx)
 
-- [ ] 3.1 Columna **Participación**: `deficit / Σ(deficit>0) × 100` para circuitos con déficit
+- [x] 3.1 Columna **Participación**: `deficit / Σ(deficit>0) × 100` para circuitos con déficit
       positivo; «—» para los que no tienen faltante.
-- [ ] 3.2 Indicador de discrepancia en la fila cuando `sourceDeficit !== null && sourceDeficit !==
+- [x] 3.2 Indicador de discrepancia en la fila cuando `sourceDeficit !== null && sourceDeficit !==
       deficit` («fuente reporta distinto, validar con Operaciones»), sin hardcodear el circuito.
 
 ## 4. Verificación

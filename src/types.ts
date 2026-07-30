@@ -137,6 +137,8 @@ export interface CircuitCapacity {
   hcAuthorized: number;
   hcReal: number;
   deficit: number;
+  /** DIF crudo del reporte, solo de referencia; null si esa columna no venía en la fuente. */
+  sourceDeficit: number | null;
   snapshotDate: string | null;
 }
 

@@ -756,6 +756,12 @@ export default function App() {
 
   const goalsProgressData = getGoalsProgress();
 
+  /**
+   * Faltante total sobre el que se reparte la participación: solo circuitos con déficit positivo
+   * (los que están completos no compiten por la necesidad de reclutamiento).
+   */
+  const circuitDeficitTotal = circuitCapacity.reduce((a, c) => a + Math.max(0, c.deficit), 0);
+
   return (
     <div className="flex h-screen bg-bg-gray text-navy-950 overflow-hidden font-sans">
       
@@ -1559,7 +1565,7 @@ export default function App() {
                   </div>
                   <div className="text-right">
                     <div className="text-2xl font-bold text-orange-600 font-mono">
-                      {circuitCapacity.reduce((a, c) => a + Math.max(0, c.deficit), 0)}
+                      {circuitDeficitTotal}
                     </div>
                     <div className="text-[10px] text-slate-400 font-semibold uppercase">Déficit total</div>
                   </div>
@@ -1574,6 +1580,7 @@ export default function App() {
                         <th className="p-3 text-center">HC Autorizado</th>
                         <th className="p-3 text-center">HC Real</th>
                         <th className="p-3 text-center">Déficit</th>
+                        <th className="p-3 text-center">Participación</th>
                         <th className="p-3">Cobertura</th>
                       </tr>
                     </thead>
@@ -1583,9 +1590,25 @@ export default function App() {
                         .map((c) => {
                           const coverage = c.hcAuthorized > 0 ? (c.hcReal / c.hcAuthorized) * 100 : 100;
                           const short = c.deficit > 0;
+                          // La fuente trae su propio DIF: si no coincide con el calculado, se señala
+                          // para que Operaciones valide — el sistema no decide cuál es el correcto.
+                          const sourceMismatch = c.sourceDeficit !== null && c.sourceDeficit !== c.deficit;
                           return (
                             <tr key={c.id} className={`hover:bg-slate-50/50 ${short ? 'bg-red-50/30' : ''}`}>
-                              <td className="p-3 font-semibold text-slate-800">{c.circuit}</td>
+                              <td className="p-3 font-semibold text-slate-800">
+                                <div className="flex items-center gap-1.5">
+                                  {c.circuit}
+                                  {sourceMismatch && (
+                                    <span
+                                      className="text-amber-600 cursor-help"
+                                      title={`El reporte fuente indica un déficit de ${c.sourceDeficit}, distinto del calculado (${c.deficit} = ${c.hcAuthorized} − ${c.hcReal}). Validar con Operaciones.`}
+                                      aria-label={`Discrepancia con la fuente: reporta ${c.sourceDeficit} en vez de ${c.deficit}. Validar con Operaciones.`}
+                                    >
+                                      ⚠
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
                               <td className="p-3 text-center font-mono text-slate-500">{c.units}</td>
                               <td className="p-3 text-center font-mono text-slate-500">{c.unitsActive}</td>
                               <td className="p-3 text-center font-mono text-slate-700">{c.hcAuthorized}</td>
@@ -1596,6 +1619,11 @@ export default function App() {
                                 }`}>
                                   {short ? `-${c.deficit}` : '✓ 0'}
                                 </span>
+                              </td>
+                              <td className="p-3 text-center font-mono text-slate-700">
+                                {short && circuitDeficitTotal > 0
+                                  ? `${((c.deficit / circuitDeficitTotal) * 100).toFixed(0)}%`
+                                  : <span className="text-slate-300">—</span>}
                               </td>
                               <td className="p-3 w-40">
                                 <div className="flex items-center gap-2">
